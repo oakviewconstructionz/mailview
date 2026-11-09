@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Set a new password · <%= appName %></title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <aside class="auth-aside">
+    <div class="brand" style="border:none;padding:0;">
+      <div class="brand-mark">OV</div>
+      <div class="brand-text"><b>OakView Construction</b><span>Business Mail</span></div>
+    </div>
+    <div><p class="lede">Choose a strong, <span>new password.</span></p></div>
+    <div class="small" style="color:#7f8ea3;">© <%= new Date().getFullYear() %> OakView Construction.</div>
+  </aside>
+  <main class="auth-main">
+    <div class="auth-card">
+      <% if (locals.flash && flash.message) { %>
+        <div class="flash flash-<%= flash.type === 'error' ? 'error' : 'info' %>"><%= flash.message %></div>
+      <% } %>
+      <h1>Set a new password</h1>
+      <p class="sub">Use at least 10 characters.</p>
+      <form method="post" action="/auth/reset/<%= token %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="field">
+          <label for="password">New password</label>
+          <input class="input" type="password" id="password" name="password" autocomplete="new-password" required minlength="10">
+        </div>
+        <div class="field">
+          <label for="confirm">Confirm new password</label>
+          <input class="input" type="password" id="confirm" name="confirm" autocomplete="new-password" required minlength="10">
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit">Update password</button>
+      </form>
+    </div>
+  </main>
+</div>
+</body>
+</html>

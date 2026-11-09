@@ -1,0 +1,105 @@
+<%- include('../partials/shell-top', { title: isNew ? 'New template' : 'Edit template', active: 'templates' }) %>
+
+<%
+  var tokens = ['{{first_name}}', '{{last_name}}', '{{email}}', '{{company}}', '{{unsubscribe_url}}'];
+  var val = function (field) { return template ? (template[field] || '') : ''; };
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1><%= isNew ? 'New template' : 'Edit template' %></h1>
+    <p class="sub"><%= isNew ? 'Design a reusable email you can send any time.' : 'Update the content of this reusable email.' %></p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/templates">Back to templates</a>
+    <% if (!isNew) { %>
+      <a class="btn" href="/templates/<%= template.id %>/preview" target="_blank" rel="noopener">Preview</a>
+    <% } %>
+  </div>
+</div>
+
+<form method="post" action="<%= isNew ? '/templates' : '/templates/' + template.id %>">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+  <div class="editor-grid">
+    <div class="stack">
+      <div class="card">
+        <div class="card-head"><h2>Details</h2></div>
+        <div class="card-body">
+          <div class="field">
+            <label for="name">Name</label>
+            <input class="input" id="name" name="name" value="<%= val('name') %>" required maxlength="190" placeholder="e.g. Monthly newsletter">
+          </div>
+          <div class="field">
+            <label for="subject">Subject</label>
+            <input class="input" id="subject" name="subject" value="<%= val('subject') %>" maxlength="255" data-counter="#subjectCount" placeholder="What lands in the inbox">
+            <div class="hint"><small><span id="subjectCount">0</span> chars</small></div>
+          </div>
+          <div class="field mb-0">
+            <label for="preheader">Preheader</label>
+            <input class="input" id="preheader" name="preheader" value="<%= val('preheader') %>" maxlength="255" placeholder="Short preview text shown beside the subject">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Body</h2>
+        </div>
+        <div class="card-body">
+          <div class="toolbar mb-2" style="gap:6px;">
+            <span class="small muted">Insert token:</span>
+            <% tokens.forEach(function (tk) { %>
+              <button type="button" class="pill" data-token="<%= tk %>"><%= tk %></button>
+            <% }); %>
+          </div>
+          <div class="field">
+            <label for="htmlBody">HTML body</label>
+            <textarea class="textarea mono" id="htmlBody" name="html" rows="16" data-preview-into="#htmlPreview"><%= val('html') %></textarea>
+          </div>
+          <div class="field mb-0">
+            <label for="textBody">Plain-text body <span class="muted">(optional)</span></label>
+            <textarea class="textarea mono" id="textBody" name="text" rows="6"><%= val('text') %></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn btn-primary" type="submit"><%= isNew ? 'Create template' : 'Save changes' %></button>
+        <a class="btn" href="/templates">Cancel</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Live preview</h2></div>
+      <div class="card-body">
+        <div class="preview-frame">
+          <div class="chrome">Rendered from the HTML body</div>
+          <iframe id="htmlPreview" class="preview-frame" title="Template preview"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script>
+(function () {
+  var ta = document.getElementById('htmlBody');
+  if (!ta) return;
+  document.querySelectorAll('[data-token]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var token = btn.getAttribute('data-token');
+      var start = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length;
+      var end = typeof ta.selectionEnd === 'number' ? ta.selectionEnd : ta.value.length;
+      var value = ta.value;
+      ta.value = value.slice(0, start) + token + value.slice(end);
+      var caret = start + token.length;
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+})();
+</script>
+
+<%- include('../partials/shell-bottom') %>

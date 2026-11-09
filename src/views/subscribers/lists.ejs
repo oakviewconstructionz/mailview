@@ -1,0 +1,165 @@
+<%- include('../partials/shell-top', { title: 'Lists & segments', active: 'lists' }) %>
+<%
+  var syncBadge = function (s) {
+    if (s === 'synced') return 'badge-green';
+    if (s === 'failed') return 'badge-red';
+    if (s === 'pending') return 'badge-amber';
+    return 'badge';
+  };
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Lists &amp; segments</h1>
+    <p class="sub">Group your audience into lists and save rule-based segments for targeting.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/lists/suppressions">Suppression list</a>
+    <a class="btn" href="/contacts">Contacts</a>
+  </div>
+</div>
+
+<div class="tabs">
+  <a class="tab" href="/contacts">Contacts</a>
+  <a class="tab active" href="/lists">Lists &amp; segments</a>
+  <a class="tab" href="/lists/suppressions">Suppressions</a>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr; align-items:start;">
+  <div class="stack">
+    <div class="card">
+      <div class="card-head">
+        <h2>Lists</h2>
+        <div class="spacer"></div>
+        <span class="badge"><%= lists.length %> total</span>
+      </div>
+      <% if (!lists.length) { %>
+        <%- include('../partials/empty', {
+          heading: 'No lists yet',
+          message: 'Create your first list to group contacts for targeted campaigns.'
+        }) %>
+      <% } else { %>
+        <div class="card-body tight">
+          <% lists.forEach(function (l) { %>
+            <div class="row between" style="padding:12px 0;border-bottom:1px solid var(--line-soft);">
+              <div style="min-width:0;">
+                <a href="/lists/<%= l.id %>" style="font-weight:600;color:var(--ink);"><%= l.name %></a>
+                <div class="small muted truncate" style="max-width:360px;"><%= l.description || 'No description' %></div>
+                <div class="small faint" style="margin-top:3px;">
+                  <span class="badge <%= syncBadge(l.sync_state) %>"><span class="badge-dot"></span><%= l.sync_state %></span>
+                  <%= l.provider_id ? 'Provider list ' + l.provider_id : 'Not yet pushed to the delivery provider' %>
+                </div>
+              </div>
+              <div class="row" style="gap:10px;">
+                <span class="badge badge-mono"><%= h.formatNumber(l.subscriber_count) %></span>
+                <a class="btn btn-sm" href="/lists/<%= l.id %>">Open</a>
+                <form method="post" action="/lists/<%= l.id %>/delete" data-confirm="Delete the list “<%= l.name %>”? Contacts are kept.">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+        <div class="card-foot">
+          <span class="small muted">Providers sync on the next campaign send; local lists are always safe to edit.</span>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Segments</h2>
+        <div class="spacer"></div>
+        <span class="badge"><%= segments.length %> total</span>
+      </div>
+      <% if (!segments.length) { %>
+        <div class="card-body"><p class="muted small mb-0">No segments yet. Define rules on the right to save a reusable audience.</p></div>
+      <% } else { %>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr><th>Segment</th><th>Rules</th><th>Created</th><th class="text-right">Actions</th></tr>
+            </thead>
+            <tbody>
+              <% segments.forEach(function (s) { %>
+              <tr>
+                <td>
+                  <div style="font-weight:600;color:var(--ink);"><%= s.name %></div>
+                  <% if (s.description) { %><div class="small muted truncate" style="max-width:280px;"><%= s.description %></div><% } %>
+                </td>
+                <td class="small muted"><%= s.summary %></td>
+                <td class="small muted nowrap"><%= h.formatDate(s.created_at) %></td>
+                <td class="text-right">
+                  <form method="post" action="/segments/<%= s.id %>/delete" data-confirm="Delete segment “<%= s.name %>”?">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>Create a list</h2></div>
+      <div class="card-body">
+        <form method="post" action="/lists">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="field">
+            <label for="list-name">Name</label>
+            <input class="input" id="list-name" name="name" required placeholder="e.g. Customers">
+          </div>
+          <div class="field">
+            <label for="list-desc">Description</label>
+            <textarea class="textarea" id="list-desc" name="description" style="min-height:80px;" placeholder="What is this list for?"></textarea>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Create list</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Create a segment</h2></div>
+      <div class="card-body">
+        <form method="post" action="/segments">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="field">
+            <label for="seg-name">Name</label>
+            <input class="input" id="seg-name" name="name" required placeholder="e.g. Engaged customers">
+          </div>
+          <div class="field">
+            <label for="seg-desc">Description</label>
+            <input class="input" id="seg-desc" name="description" placeholder="Optional">
+          </div>
+          <div class="field">
+            <label for="seg-list">In list</label>
+            <select class="select" id="seg-list" name="list_id">
+              <option value="">Any list</option>
+              <% lists.forEach(function (l) { %><option value="<%= l.id %>"><%= l.name %></option><% }); %>
+            </select>
+          </div>
+          <div class="field">
+            <label for="seg-status">Status</label>
+            <select class="select" id="seg-status" name="status">
+              <option value="">Any status</option>
+              <% statuses.forEach(function (s) { %><option value="<%= s %>"><%= s %></option><% }); %>
+            </select>
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" name="has_opened" value="1"> <span>Has opened a campaign</span></label>
+            <label class="check" style="margin-top:8px;"><input type="checkbox" name="has_clicked" value="1"> <span>Has clicked a link</span></label>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Create segment</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../partials/shell-bottom') %>

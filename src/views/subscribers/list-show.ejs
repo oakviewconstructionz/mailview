@@ -1,0 +1,131 @@
+<%- include('../partials/shell-top', { title: list.name, active: 'lists' }) %>
+<%
+  var statusBadge = function (st) {
+    if (st === 'subscribed') return 'badge-green';
+    if (st === 'bounced' || st === 'complained') return 'badge-red';
+    if (st === 'pending') return 'badge-blue';
+    return 'badge-amber';
+  };
+  var memberUrl = function (p) { return '/lists/' + list.id + '?page=' + p; };
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1><%= list.name %></h1>
+    <p class="sub"><%= list.description || 'No description' %> · <span class="badge"><%= h.formatNumber(pg.total) %> members</span></p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/lists">All lists</a>
+  </div>
+</div>
+
+<div class="tabs">
+  <a class="tab" href="/contacts">Contacts</a>
+  <a class="tab active" href="/lists">Lists &amp; segments</a>
+  <a class="tab" href="/lists/suppressions">Suppressions</a>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; align-items:start;">
+  <div class="card">
+    <div class="card-head">
+      <h2>Members</h2>
+      <div class="spacer"></div>
+      <span class="badge"><%= h.formatNumber(pg.total) %></span>
+    </div>
+    <% if (!members.length) { %>
+      <%- include('../partials/empty', {
+        heading: 'No members yet',
+        message: 'Add existing contacts or new email addresses from the panel beside this card.'
+      }) %>
+    <% } else { %>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Contact</th><th>Status</th><th>Added</th><th class="text-right">Actions</th></tr>
+          </thead>
+          <tbody>
+            <% members.forEach(function (m) { %>
+            <tr>
+              <td>
+                <a class="row-link" href="/contacts/<%= m.id %>"><%= m.email %></a>
+                <div class="small muted"><%= [m.first_name, m.last_name].filter(Boolean).join(' ') || '—' %></div>
+              </td>
+              <td><span class="badge <%= statusBadge(m.status) %>"><span class="badge-dot"></span><%= m.status %></span></td>
+              <td class="small muted nowrap"><%= h.formatDate(m.added_at) %></td>
+              <td class="text-right">
+                <form method="post" action="/lists/<%= list.id %>/members/remove">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <input type="hidden" name="subscriber_id" value="<%= m.id %>">
+                  <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+                </form>
+              </td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% if (pg.totalPages > 1) { %>
+        <div class="card-foot row between">
+          <span class="small muted">Page <%= pg.page %> of <%= pg.totalPages %></span>
+          <div class="row" style="gap:8px;">
+            <% if (pg.hasPrev) { %><a class="btn btn-sm" href="<%= memberUrl(pg.page - 1) %>">Previous</a><% } %>
+            <% if (pg.hasNext) { %><a class="btn btn-sm" href="<%= memberUrl(pg.page + 1) %>">Next</a><% } %>
+          </div>
+        </div>
+      <% } %>
+    <% } %>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>List details</h2></div>
+      <div class="card-body">
+        <form method="post" action="/lists/<%= list.id %>">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="field">
+            <label for="name">Name</label>
+            <input class="input" id="name" name="name" required value="<%= list.name %>">
+          </div>
+          <div class="field">
+            <label for="description">Description</label>
+            <textarea class="textarea" id="description" name="description" style="min-height:80px;"><%= list.description || '' %></textarea>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Save changes</button>
+        </form>
+      </div>
+      <div class="card-foot">
+        <form method="post" action="/lists/<%= list.id %>/delete" data-confirm="Delete the list “<%= list.name %>”? Contacts are kept.">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-sm btn-danger btn-block" type="submit">Delete list</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Add members</h2></div>
+      <div class="card-body">
+        <form method="post" action="/lists/<%= list.id %>/members">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="field">
+            <label for="subscriber_id">Add an existing contact</label>
+            <select class="select" id="subscriber_id" name="subscriber_id">
+              <option value="">Select a contact…</option>
+              <% candidates.forEach(function (c) { %>
+                <option value="<%= c.id %>"><%= c.email %><%= [c.first_name, c.last_name].filter(Boolean).length ? ' — ' + [c.first_name, c.last_name].filter(Boolean).join(' ') : '' %></option>
+              <% }); %>
+            </select>
+            <div class="hint"><%= candidates.length %> contact(s) not yet on this list.</div>
+          </div>
+          <div class="field">
+            <label for="emails">Or add new email addresses</label>
+            <textarea class="textarea" id="emails" name="emails" style="min-height:80px;" placeholder="one@example.com, two@example.com"></textarea>
+            <div class="hint">Comma or line separated. New addresses are created as subscribers.</div>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Add to list</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../partials/shell-bottom') %>

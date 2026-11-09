@@ -1,0 +1,125 @@
+<%- include('../partials/shell-top', { title: 'Suppressions', active: 'lists' }) %>
+<%
+  var reasonBadge = function (r) {
+    if (r === 'unsubscribe') return 'badge-amber';
+    if (r === 'bounce') return 'badge-red';
+    if (r === 'complaint') return 'badge-red';
+    return 'badge-blue';
+  };
+  var pageUrl = function (p) { return '/lists/suppressions?page=' + p; };
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Suppression list</h1>
+    <p class="sub">Addresses here are never emailed again — across every list and campaign.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/lists">Lists &amp; segments</a>
+    <a class="btn" href="/contacts">Contacts</a>
+  </div>
+</div>
+
+<div class="tabs">
+  <a class="tab" href="/contacts">Contacts</a>
+  <a class="tab" href="/lists">Lists &amp; segments</a>
+  <a class="tab active" href="/lists/suppressions">Suppressions</a>
+</div>
+
+<div class="grid grid-4 mb-3">
+  <div class="card stat">
+    <div class="label">Total suppressed</div>
+    <div class="value mono"><%= h.formatNumber(pg.total) %></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Unsubscribes</div>
+    <div class="value mono"><%= h.formatNumber(counts.unsubscribe || 0) %></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Bounces</div>
+    <div class="value mono"><%= h.formatNumber(counts.bounce || 0) %></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Complaints</div>
+    <div class="value mono"><%= h.formatNumber(counts.complaint || 0) %></div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; align-items:start;">
+  <div class="card">
+    <div class="card-head">
+      <h2>Suppressed addresses</h2>
+      <div class="spacer"></div>
+      <span class="badge"><%= h.formatNumber(pg.total) %></span>
+    </div>
+    <% if (!rows.length) { %>
+      <%- include('../partials/empty', {
+        heading: 'Nothing suppressed',
+        message: 'Add an address on the right to block it from all future sends.'
+      }) %>
+    <% } else { %>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Email</th><th>Reason</th><th>Detail</th><th>Added</th><th class="text-right">Actions</th></tr>
+          </thead>
+          <tbody>
+            <% rows.forEach(function (s) { %>
+            <tr>
+              <td style="font-weight:600;color:var(--ink);"><%= s.email %></td>
+              <td><span class="badge <%= reasonBadge(s.reason) %>"><span class="badge-dot"></span><%= s.reason %></span></td>
+              <td class="small muted"><%= s.detail || '—' %></td>
+              <td class="small muted nowrap"><%= h.formatDate(s.created_at) %></td>
+              <td class="text-right">
+                <form method="post" action="/lists/suppressions/<%= s.id %>/delete" data-confirm="Remove <%= s.email %> from the suppression list?">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+                </form>
+              </td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% if (pg.totalPages > 1) { %>
+        <div class="card-foot row between">
+          <span class="small muted">Page <%= pg.page %> of <%= pg.totalPages %></span>
+          <div class="row" style="gap:8px;">
+            <% if (pg.hasPrev) { %><a class="btn btn-sm" href="<%= pageUrl(pg.page - 1) %>">Previous</a><% } %>
+            <% if (pg.hasNext) { %><a class="btn btn-sm" href="<%= pageUrl(pg.page + 1) %>">Next</a><% } %>
+          </div>
+        </div>
+      <% } %>
+    <% } %>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Suppress an address</h2></div>
+    <div class="card-body">
+      <form method="post" action="/lists/suppressions">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="field">
+          <label for="email">Email address</label>
+          <input class="input" type="email" id="email" name="email" required placeholder="name@example.com">
+        </div>
+        <div class="field">
+          <label for="reason">Reason</label>
+          <select class="select" id="reason" name="reason">
+            <option value="manual">Manual</option>
+            <option value="unsubscribe">Unsubscribe</option>
+            <option value="bounce">Bounce</option>
+            <option value="complaint">Complaint</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="detail">Detail</label>
+          <input class="input" id="detail" name="detail" placeholder="Optional note">
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Suppress address</button>
+      </form>
+      <p class="small muted mt-2 mb-0">Suppressing an address also marks the matching contact as unsubscribed.</p>
+    </div>
+  </div>
+</div>
+
+<%- include('../partials/shell-bottom') %>

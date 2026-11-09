@@ -1,0 +1,31 @@
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.shell -->
+
+<nav class="tabbar">
+  <%
+    var tabs = [
+      { key: 'overview', label: 'Home', href: '/', ico: 'grid' },
+      { key: 'inbox', label: 'Inbox', href: '/inbox', ico: 'mail' },
+      { key: 'contacts', label: 'Contacts', href: '/contacts', ico: 'users' },
+      { key: 'campaigns', label: 'Campaigns', href: '/campaigns', ico: 'send' },
+      { key: 'analytics', label: 'Insights', href: '/analytics', ico: 'chart' },
+    ];
+  %>
+  <% tabs.forEach(function (t) { %>
+    <a href="<%= t.href %>" class="<%= (active === t.key || (t.key === 'contacts' && active === 'lists')) ? 'active' : '' %>">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <% if (t.ico === 'grid') { %><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><% } %>
+        <% if (t.ico === 'mail') { %><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3 6.5 8 6a2 2 0 0 0 2 0l8-6"/><% } %>
+        <% if (t.ico === 'users') { %><path d="M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20"/><circle cx="9.5" cy="7.5" r="3.5"/><% } %>
+        <% if (t.ico === 'send') { %><path d="M21.5 2.5 10.5 13.5"/><path d="M21.5 2.5 14.5 21l-4-7.5-7.5-4 18.5-7Z"/><% } %>
+        <% if (t.ico === 'chart') { %><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 2.5L20 7"/><% } %>
+      </svg>
+      <span><%= t.label %></span>
+    </a>
+  <% }); %>
+</nav>
+
+<script src="/static/js/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Reset password · <%= appName %></title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <aside class="auth-aside">
+    <div class="brand" style="border:none;padding:0;">
+      <div class="brand-mark">OV</div>
+      <div class="brand-text"><b>OakView Construction</b><span>Business Mail</span></div>
+    </div>
+    <div><p class="lede">Reset your password <span>securely.</span></p></div>
+    <div class="small" style="color:#7f8ea3;">© <%= new Date().getFullYear() %> OakView Construction.</div>
+  </aside>
+  <main class="auth-main">
+    <div class="auth-card">
+      <% if (locals.flash && flash.message) { %>
+        <div class="flash flash-<%= flash.type === 'error' ? 'error' : (flash.type === 'warn' ? 'warn' : 'info') %>"><%= flash.message %></div>
+      <% } %>
+
+      <% if (sent) { %>
+        <h1>Check your inbox</h1>
+        <p class="sub">If an account exists for that address, we&rsquo;ve sent a password reset link. It expires in 60 minutes.</p>
+        <a class="btn btn-block" href="/auth/login">Back to sign in</a>
+      <% } else { %>
+        <h1>Forgot your password?</h1>
+        <p class="sub">Enter your email and we&rsquo;ll send you a link to set a new one.</p>
+        <form method="post" action="/auth/forgot">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="field">
+            <label for="email">Email address</label>
+            <input class="input" type="email" id="email" name="email" autocomplete="username" required placeholder="you@oak-viewconstruction.com">
+          </div>
+          <button class="btn btn-primary btn-block btn-lg" type="submit">Send reset link</button>
+        </form>
+        <p class="small mt-2"><a href="/auth/login">Return to sign in</a></p>
+      <% } %>
+    </div>
+  </main>
+</div>
+</body>
+</html>

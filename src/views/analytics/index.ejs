@@ -1,0 +1,232 @@
+<%- include('../partials/shell-top', { title: 'Analytics', active: 'analytics' }) %>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Analytics</h1>
+    <p class="sub">Delivery, engagement and campaign performance &mdash; measured from stored events.</p>
+  </div>
+  <div class="row wrap">
+    <form method="get" action="/analytics" class="row wrap" style="gap:8px;">
+      <input class="input" type="date" name="from" value="<%= from %>" style="width:auto;" aria-label="From date">
+      <span class="small muted">to</span>
+      <input class="input" type="date" name="to" value="<%= to %>" style="width:auto;" aria-label="To date">
+      <button class="btn btn-sm" type="submit">Apply</button>
+      <% if (from || to) { %><a class="btn btn-sm btn-ghost" href="/analytics">Clear</a><% } %>
+    </form>
+    <a class="btn btn-sm" href="/analytics/export<%= (from || to) ? ('?from=' + from + '&to=' + to) : '' %>">Export CSV</a>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-3">
+  <div class="card stat">
+    <div class="label">Total subscribers</div>
+    <div class="value mono"><%= h.formatNumber(subs.total) %></div>
+    <div class="delta"><%= h.formatNumber(subs.subscribed) %> subscribed &middot; <%= h.formatNumber(subs.unsubscribed) %> unsubscribed</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Total campaigns</div>
+    <div class="value mono"><%= h.formatNumber(campaignCount) %></div>
+    <div class="delta"><%= h.formatNumber(totals.campaigns) %> sent or sending</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Emails sent</div>
+    <div class="value mono"><%= h.formatNumber(totals.sent) %></div>
+    <div class="delta"><%= h.formatNumber(totals.failed) %> failed</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Successful deliveries</div>
+    <div class="value mono"><%= h.formatNumber(totals.delivered) %></div>
+    <div class="delta">Confirmed by the provider</div>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-3">
+  <div class="card stat">
+    <div class="label">Open rate</div>
+    <div class="value mono"><%= totals.openRate.toFixed(1) %>%</div>
+    <div class="bar"><i style="width:<%= Math.min(100, totals.openRate) %>%"></i></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Click rate</div>
+    <div class="value mono"><%= totals.clickRate.toFixed(1) %>%</div>
+    <div class="bar"><i style="width:<%= Math.min(100, totals.clickRate) %>%"></i></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Bounce rate</div>
+    <div class="value mono"><%= totals.bounceRate.toFixed(1) %>%</div>
+    <div class="bar"><i style="width:<%= Math.min(100, totals.bounceRate) %>%"></i></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Unsubscribes</div>
+    <div class="value mono"><%= h.formatNumber(totals.unsubscribes) %></div>
+    <div class="delta">Auto-suppressed from future sends</div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; align-items:start;">
+  <div class="card">
+    <div class="card-head">
+      <h2>Send volume</h2>
+      <div class="spacer"></div>
+      <span class="small muted">Last 14 days</span>
+    </div>
+    <div class="card-body">
+      <% if (!volume.length) { %>
+        <p class="small muted mb-0">No sends recorded in the last 14 days.</p>
+      <% } else { %>
+        <div style="display:flex; align-items:flex-end; gap:6px; height:160px;">
+          <% volume.forEach(function (v) { var pct = Math.round((v.count / volumeMax) * 100); %>
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;" title="<%= v.count %> sent">
+              <div class="mono" style="font-size:10px;color:var(--muted);margin-bottom:3px;"><%= v.count %></div>
+              <div style="width:100%; height:<%= Math.max(2, pct) %>%; background:linear-gradient(180deg, var(--accent-2), var(--accent)); border-radius:3px 3px 0 0;"></div>
+              <div style="font-size:9.5px;color:var(--faint);margin-top:5px;"><%= v.day %></div>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Campaign status</h2>
+      <div class="spacer"></div>
+      <span class="badge"><%= h.formatNumber(statusTotal) %> total</span>
+    </div>
+    <div class="card-body">
+      <% if (!statuses.length) { %>
+        <p class="small muted mb-0">No campaigns yet.</p>
+      <% } else { %>
+        <div class="stack" style="margin-top:0;">
+          <% statuses.forEach(function (s) { %>
+            <div>
+              <div class="row between" style="margin-bottom:5px;">
+                <span class="badge <%= s.status === 'sent' ? 'badge-green' : (s.status === 'sending' || s.status === 'queued' ? 'badge-blue' : (s.status === 'failed' || s.status === 'cancelled' ? 'badge-red' : 'badge-amber')) %>">
+                  <span class="badge-dot"></span><%= s.status %>
+                </span>
+                <span class="small mono"><%= h.formatNumber(s.count) %></span>
+              </div>
+              <div class="progress thin"><i style="width:<%= Math.min(100, s.pct) %>%"></i></div>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-head">
+    <h2>Top performing campaigns</h2>
+    <div class="spacer"></div>
+    <span class="small muted">Ranked by opens</span>
+  </div>
+  <% if (!top.length) { %>
+    <%- include('../partials/empty', { heading: 'No performance data yet', message: 'Once campaigns have been sent, their open and click rates will appear here.' }) %>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr><th>Campaign</th><th class="num">Sent</th><th class="num">Delivered</th><th class="num">Open rate</th><th class="num">Click rate</th></tr>
+        </thead>
+        <tbody>
+          <% top.forEach(function (c) { %>
+            <tr>
+              <td><a class="row-link" href="/campaigns/<%= c.id %>"><%= c.name %></a></td>
+              <td class="num"><%= h.formatNumber(c.sent_count) %></td>
+              <td class="num"><%= h.formatNumber(c.delivered_count) %></td>
+              <td class="num"><%= c.openRate.toFixed(1) %>%</td>
+              <td class="num"><%= c.clickRate.toFixed(1) %>%</td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<div class="card mt-3">
+  <div class="card-head">
+    <h2>Recent campaign activity</h2>
+    <div class="spacer"></div>
+    <a class="btn btn-sm" href="/campaigns">View all</a>
+  </div>
+  <% if (!recent.length) { %>
+    <%- include('../partials/empty', { heading: 'No campaigns yet', message: 'Create your first campaign to start reaching your subscribers.', actionHref: '/campaigns/new', actionLabel: 'Create a campaign' }) %>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr><th>Campaign</th><th>Status</th><th class="num">Sent</th><th class="num">Opens</th><th class="num">Open rate</th><th class="num">Clicks</th><th class="num">Click rate</th></tr>
+        </thead>
+        <tbody>
+          <% recent.forEach(function (c) { %>
+            <tr>
+              <td>
+                <a class="row-link" href="/campaigns/<%= c.id %>"><%= c.name %></a>
+                <div class="small muted truncate" style="max-width:320px;"><%= c.subject %></div>
+              </td>
+              <td>
+                <span class="badge <%= c.status === 'sent' ? 'badge-green' : (c.status === 'sending' ? 'badge-blue' : (c.status === 'failed' ? 'badge-red' : 'badge-amber')) %>">
+                  <span class="badge-dot"></span><%= c.status %>
+                </span>
+              </td>
+              <td class="num"><%= h.formatNumber(c.sent_count) %></td>
+              <td class="num"><%= h.formatNumber(c.open_count) %></td>
+              <td class="num"><%= c.openRate.toFixed(1) %>%</td>
+              <td class="num"><%= h.formatNumber(c.click_count) %></td>
+              <td class="num"><%= c.clickRate.toFixed(1) %>%</td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<div class="card mt-3">
+  <div class="card-head">
+    <h2>Campaign performance</h2>
+    <div class="spacer"></div>
+    <span class="small muted">
+      <% if (from || to) { %>Filtered <span class="mono"><%= from || '…' %></span> &rarr; <span class="mono"><%= to || '…' %></span><% } else { %>All time<% } %>
+    </span>
+    <a class="btn btn-sm" href="/analytics/export<%= (from || to) ? ('?from=' + from + '&to=' + to) : '' %>">Export CSV</a>
+  </div>
+  <% if (!performance.length) { %>
+    <%- include('../partials/empty', { heading: 'No campaigns in range', message: 'Adjust the date range to see campaign performance.' }) %>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Campaign</th><th>Status</th><th>Provider</th>
+            <th class="num">Recipients</th><th class="num">Sent</th><th class="num">Delivered</th>
+            <th class="num">Open rate</th><th class="num">Click rate</th><th class="num">Bounce rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% performance.forEach(function (c) { %>
+            <tr>
+              <td><a class="row-link" href="/campaigns/<%= c.id %>"><%= c.name %></a></td>
+              <td>
+                <span class="badge <%= c.status === 'sent' ? 'badge-green' : (c.status === 'sending' ? 'badge-blue' : (c.status === 'failed' ? 'badge-red' : 'badge-amber')) %>">
+                  <span class="badge-dot"></span><%= c.status %>
+                </span>
+              </td>
+              <td class="small muted"><%= c.provider %></td>
+              <td class="num"><%= h.formatNumber(c.total_recipients) %></td>
+              <td class="num"><%= h.formatNumber(c.sent_count) %></td>
+              <td class="num"><%= h.formatNumber(c.delivered_count) %></td>
+              <td class="num"><%= c.openRate.toFixed(1) %>%</td>
+              <td class="num"><%= c.clickRate.toFixed(1) %>%</td>
+              <td class="num"><%= c.bounceRate.toFixed(1) %>%</td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('../partials/shell-bottom') %>

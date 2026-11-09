@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Sign in · <%= appName %></title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <aside class="auth-aside">
+    <div class="brand" style="border:none;padding:0;">
+      <div class="brand-mark">OV</div>
+      <div class="brand-text"><b>OakView Construction</b><span>Business Mail</span></div>
+    </div>
+    <div>
+      <p class="lede">Your complete business email &amp; marketing workspace, <span>in one place.</span></p>
+      <ul class="points">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Read, reply and send business mail from your own portal.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Build and schedule campaigns with real delivery tracking.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Manage contacts, lists and suppression automatically.</span></li>
+      </ul>
+    </div>
+    <div class="small" style="color:#7f8ea3;">© <%= new Date().getFullYear() %> OakView Construction. All rights reserved.</div>
+  </aside>
+
+  <main class="auth-main">
+    <div class="auth-card">
+      <% if (locals.flash && flash.message) { %>
+        <div class="flash flash-<%= flash.type === 'error' ? 'error' : (flash.type === 'warn' ? 'warn' : 'info') %>"><%= flash.message %></div>
+      <% } %>
+      <h1>Sign in</h1>
+      <p class="sub">Welcome back. Enter your details to continue.</p>
+
+      <form method="post" action="/auth/login" novalidate>
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="next" value="<%= typeof next !== 'undefined' ? next : '' %>">
+        <div class="field">
+          <label for="email">Email address</label>
+          <input class="input" type="email" id="email" name="email" autocomplete="username" required
+                 value="<%= typeof email !== 'undefined' ? email : '' %>" placeholder="you@oak-viewconstruction.com">
+        </div>
+        <div class="field">
+          <div class="row between" style="margin-bottom:6px;">
+            <label for="password" style="margin:0;">Password</label>
+            <a class="small" href="/auth/forgot">Forgot password?</a>
+          </div>
+          <input class="input" type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit">Sign in</button>
+      </form>
+    </div>
+  </main>
+</div>
+</body>
+</html>

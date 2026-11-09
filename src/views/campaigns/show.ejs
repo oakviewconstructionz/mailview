@@ -1,0 +1,340 @@
+<%- include('../partials/shell-top', { title: campaign.name, active: 'campaigns' }) %>
+
+<%
+  var c = campaign;
+  var badgeFor = function (s) {
+    return ({
+      draft: '', scheduled: 'badge-blue', queued: 'badge-amber', syncing: 'badge-amber',
+      sending: 'badge-blue', paused: 'badge-amber', sent: 'badge-green', failed: 'badge-red', cancelled: ''
+    })[s] || '';
+  };
+  var recipientBadge = function (s) {
+    return ({
+      queued: 'badge-mono', sending: 'badge-amber', sent: 'badge-blue', delivered: 'badge-blue',
+      opened: 'badge-green', clicked: 'badge-green', failed: 'badge-red', bounced: 'badge-red', unsubscribed: ''
+    })[s] || '';
+  };
+  var live = ['queued', 'syncing', 'sending'].indexOf(c.status) !== -1;
+  var totalR = Number(c.total_recipients) || 0;
+  var sentR = Number(c.sent_count) || 0;
+  var pct = totalR ? Math.min(100, Math.round((sentR / totalR) * 100)) : 0;
+  var rStat = recipientStatus || {};
+  var toLocalInput = function (d) {
+    if (!d) return '';
+    var dt = new Date(d);
+    if (isNaN(dt)) return '';
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) + 'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+  };
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1><%= c.name %> <span class="badge <%= badgeFor(c.status) %>" id="statusBadge"><%= c.status %></span></h1>
+    <p class="sub"><%= c.subject %></p>
+  </div>
+  <div class="row wrap">
+    <a class="btn" href="/campaigns">All campaigns</a>
+    <a class="btn" href="/campaigns/<%= c.id %>/preview" target="_blank" rel="noopener">Preview</a>
+    <% if (['draft','scheduled','paused','cancelled','failed'].indexOf(c.status) !== -1) { %>
+      <a class="btn" href="/campaigns/<%= c.id %>/edit">Edit</a>
+    <% } %>
+  </div>
+</div>
+
+<% if (c.last_error) { %>
+  <div class="alert mb-3"><strong>Last error</strong><%= c.last_error %></div>
+<% } %>
+
+<% if (live) { %>
+  <div class="alert mb-3" style="background:var(--accent-soft);color:var(--accent);border-color:#d3e2f2;">
+    <strong>Sending in the background</strong>
+    This campaign is being delivered in throttled batches. Progress below updates automatically — you can safely leave this page.
+  </div>
+<% } %>
+
+<!-- Launch / lifecycle actions -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row wrap between">
+      <div class="row wrap">
+        <% if (['draft','scheduled','paused','failed','cancelled'].indexOf(c.status) !== -1) { %>
+          <form method="post" action="/campaigns/<%= c.id %>/launch" data-confirm="Launch “<%= c.name %>” now? Emails will start sending in the background.">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn-primary" type="submit" <%= can('send') ? '' : 'disabled' %>>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 10.5 13.5"/><path d="M21.5 2.5 14.5 21l-4-7.5-7.5-4 18.5-7Z"/></svg>
+              Launch now
+            </button>
+          </form>
+        <% } %>
+        <% if (['queued','sending','syncing'].indexOf(c.status) !== -1) { %>
+          <form method="post" action="/campaigns/<%= c.id %>/pause">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn" type="submit">Pause</button>
+          </form>
+        <% } %>
+        <% if (c.status === 'paused') { %>
+          <form method="post" action="/campaigns/<%= c.id %>/resume">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn-primary" type="submit">Resume sending</button>
+          </form>
+        <% } %>
+        <% if (['queued','sending','syncing','paused','scheduled','draft','failed'].indexOf(c.status) !== -1) { %>
+          <form method="post" action="/campaigns/<%= c.id %>/cancel" data-confirm="Cancel “<%= c.name %>”? Unsent recipients will be skipped.">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn-danger" type="submit">Cancel</button>
+          </form>
+        <% } %>
+        <% if (['queued','syncing','sending'].indexOf(c.status) === -1) { %>
+          <form method="post" action="/campaigns/<%= c.id %>/delete" data-confirm="Delete “<%= c.name %>”? This cannot be undone.">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn-ghost" type="submit">Delete</button>
+          </form>
+        <% } %>
+      </div>
+      <div class="row wrap">
+        <% if (['draft','scheduled','paused','cancelled','failed'].indexOf(c.status) !== -1) { %>
+          <form method="post" action="/campaigns/<%= c.id %>/schedule" class="row" style="gap:8px;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input class="input" type="datetime-local" name="scheduled_at" value="<%= toLocalInput(c.scheduled_at) %>" style="width:auto;">
+            <button class="btn" type="submit">Schedule</button>
+          </form>
+        <% } %>
+        <% if (c.status === 'scheduled') { %>
+          <span class="small muted">Scheduled for <%= h.formatDateTime(c.scheduled_at) %></span>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Progress -->
+<div class="card mb-3">
+  <div class="card-head">
+    <h2>Progress</h2>
+    <div class="spacer"></div>
+    <span class="small muted"><span id="pSent"><%= h.formatNumber(sentR) %></span> / <span id="pTotal"><%= h.formatNumber(totalR) %></span> sent</span>
+  </div>
+  <div class="card-body">
+    <div class="progress"><i id="progressBar" style="width:<%= pct %>%"></i></div>
+    <div class="grid grid-4 mt-3">
+      <div class="stat">
+        <div class="label">Delivered</div>
+        <div class="value mono" id="pDelivered"><%= h.formatNumber(c.delivered_count) %></div>
+      </div>
+      <div class="stat">
+        <div class="label">Opened</div>
+        <div class="value mono" id="pOpened"><%= h.formatNumber(c.open_count) %></div>
+        <div class="delta"><%= h.percent(c.open_count, c.delivered_count || c.sent_count) %> open rate</div>
+      </div>
+      <div class="stat">
+        <div class="label">Clicked</div>
+        <div class="value mono" id="pClicked"><%= h.formatNumber(c.click_count) %></div>
+        <div class="delta"><%= h.percent(c.click_count, c.delivered_count || c.sent_count) %> click rate</div>
+      </div>
+      <div class="stat">
+        <div class="label">Bounced</div>
+        <div class="value mono" id="pBounced"><%= h.formatNumber(c.bounce_count) %></div>
+        <div class="delta"><%= h.percent(c.bounce_count, c.sent_count) %> bounce rate</div>
+      </div>
+      <div class="stat">
+        <div class="label">Failed</div>
+        <div class="value mono" id="pFailed"><%= h.formatNumber(c.failed_count) %></div>
+      </div>
+      <div class="stat">
+        <div class="label">Unsubscribed</div>
+        <div class="value mono" id="pUnsub"><%= h.formatNumber(c.unsubscribe_count) %></div>
+      </div>
+      <div class="stat">
+        <div class="label">Started</div>
+        <div class="value mono" style="font-size:15px;"><%= c.started_at ? h.formatDateTime(c.started_at) : '—' %></div>
+      </div>
+      <div class="stat">
+        <div class="label">Completed</div>
+        <div class="value mono" style="font-size:15px;"><%= c.completed_at ? h.formatDateTime(c.completed_at) : '—' %></div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="row wrap small muted" style="gap:14px;">
+      <% ['queued','sending','sent','delivered','opened','clicked','failed','bounced','unsubscribed'].forEach(function (s) { %>
+        <% if (rStat[s]) { %>
+          <span><span class="badge <%= recipientBadge(s) %>"><%= s %></span> <span class="mono" id="r-<%= s %>"><%= h.formatNumber(rStat[s]) %></span></span>
+        <% } %>
+      <% }); %>
+    </div>
+  </div>
+</div>
+
+<div class="editor-grid">
+  <div class="stack">
+    <% if (preflight) { %>
+    <div class="card">
+      <div class="card-head">
+        <h2>Pre-flight check</h2>
+        <div class="spacer"></div>
+        <span class="badge <%= preflight.ok ? 'badge-green' : 'badge-red' %>"><%= preflight.ok ? 'Ready to launch' : 'Cannot launch yet' %></span>
+      </div>
+      <div class="card-body">
+        <div class="stack" style="gap:10px;">
+          <% preflight.checks.forEach(function (chk) { %>
+            <div class="row" style="align-items:flex-start;gap:10px;">
+              <span class="badge <%= chk.ok ? 'badge-green' : (chk.blocking ? 'badge-red' : 'badge-amber') %>" style="min-width:52px;justify-content:center;"><%= chk.ok ? 'OK' : (chk.blocking ? 'Block' : 'Note') %></span>
+              <div style="flex:1;min-width:0;">
+                <div class="small" style="font-weight:600;"><%= chk.label %></div>
+                <div class="small muted"><%= chk.detail %></div>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+        <div class="divider"></div>
+        <div class="row wrap between">
+          <div class="small muted">Audience: <b class="mono"><%= h.formatNumber(preflight.audienceCount) %></b> · Cap: <b class="mono"><%= preflight.limits ? h.formatNumber(preflight.limits.maxRecipients) : '—' %></b> · Billed this month: <b class="mono"><%= h.formatNumber(preflight.used) %></b></div>
+          <a class="btn btn-sm" href="/settings">Review limits</a>
+        </div>
+      </div>
+    </div>
+    <% } %>
+
+    <div class="card">
+      <div class="card-head"><h2>Delivery settings</h2></div>
+      <div class="card-body">
+        <div class="grid grid-3" style="gap:12px;">
+          <div><div class="small muted">Batch size</div><div class="mono"><%= h.formatNumber(settingsSnapshot.batchSize) %></div></div>
+          <div><div class="small muted">Pause between batches</div><div class="mono"><%= settingsSnapshot.intervalSeconds %>s</div></div>
+          <div><div class="small muted">Max recipients</div><div class="mono"><%= h.formatNumber(settingsSnapshot.maxRecipients) %></div></div>
+          <div><div class="small muted">Rate limit</div><div class="mono"><%= h.formatNumber(settingsSnapshot.ratePerMinute) %>/min</div></div>
+          <div><div class="small muted">Concurrency</div><div class="mono"><%= settingsSnapshot.concurrency %></div></div>
+          <div><div class="small muted">Audience source</div><div class="mono"><%= c.list_id ? 'List #' + c.list_id : (c.segment_id ? 'Segment #' + c.segment_id : 'All subscribed') %></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Recipients</h2>
+        <div class="spacer"></div>
+        <span class="badge"><%= h.formatNumber(pagination.total) %> total</span>
+      </div>
+      <% if (!recipients.length) { %>
+        <div class="card-body"><p class="small muted mb-0">No recipients queued yet. Launch the campaign to build the queue.</p></div>
+      <% } else { %>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Email</th><th>Status</th><th>Attempts</th><th>Detail</th><th>Sent</th></tr>
+          </thead>
+          <tbody>
+            <% recipients.forEach(function (r) { %>
+            <tr>
+              <td class="mono small"><%= r.email %></td>
+              <td><span class="badge <%= recipientBadge(r.status) %>"><%= r.status %></span></td>
+              <td class="mono small"><%= r.attempts %></td>
+              <td class="small muted truncate" style="max-width:240px;"><%= r.error || (r.opened_at ? 'opened' : (r.clicked_at ? 'clicked' : '')) %></td>
+              <td class="small muted nowrap"><%= r.sent_at ? h.formatDateTime(r.sent_at) : '—' %></td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% if (pagination.totalPages > 1) { %>
+        <div class="card-foot row between">
+          <span class="small muted">Page <%= pagination.page %> of <%= pagination.totalPages %></span>
+          <div class="row">
+            <% if (pagination.hasPrev) { %><a class="btn btn-sm" href="/campaigns/<%= c.id %>?page=<%= pagination.page - 1 %>">Previous</a><% } %>
+            <% if (pagination.hasNext) { %><a class="btn btn-sm" href="/campaigns/<%= c.id %>?page=<%= pagination.page + 1 %>">Next</a><% } %>
+          </div>
+        </div>
+      <% } %>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>Send a test</h2></div>
+      <div class="card-body">
+        <form method="post" action="/campaigns/<%= c.id %>/test">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="field">
+            <label for="to">Send a preview to</label>
+            <input class="input" id="to" name="to" type="email" required placeholder="you@oak-viewconstruction.com" value="<%= currentUser ? currentUser.email : '' %>">
+            <div class="hint">Test emails go to one address only and never count towards this campaign.</div>
+          </div>
+          <button class="btn" type="submit" <%= can('send') ? '' : 'disabled' %>>Send test email</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Recent activity</h2></div>
+      <% if (!events.length) { %>
+        <div class="card-body"><p class="small muted mb-0">No activity recorded yet.</p></div>
+      <% } else { %>
+      <div class="table-wrap">
+        <table class="data">
+          <tbody>
+            <% events.forEach(function (e) { %>
+            <tr>
+              <td>
+                <div class="row" style="gap:8px;">
+                  <span class="badge <%= e.type === 'error' || e.type === 'bounce' ? 'badge-red' : (e.type === 'send' ? 'badge-blue' : 'badge-green') %>"><%= e.type %></span>
+                  <span class="small muted truncate" style="max-width:180px;"><%= e.email || (e.url || '') %></span>
+                </div>
+                <div class="small muted"><%= h.timeAgo(e.created_at) %></div>
+              </td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<% if (live) { %>
+<script>
+(function () {
+  var id = <%= c.id %>;
+  function fmt(n) { return Number(n || 0).toLocaleString('en-US'); }
+  function set(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+  function poll() {
+    fetch('/campaigns/' + id + '/progress', { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.campaign) return;
+        var c = d.campaign;
+        set('pSent', fmt(c.sent_count));
+        set('pTotal', fmt(c.total_recipients));
+        set('pDelivered', fmt(c.delivered_count));
+        set('pOpened', fmt(c.open_count));
+        set('pClicked', fmt(c.click_count));
+        set('pBounced', fmt(c.bounce_count));
+        set('pFailed', fmt(c.failed_count));
+        set('pUnsub', fmt(c.unsubscribe_count));
+        var bar = document.getElementById('progressBar');
+        if (bar) {
+          var total = Number(c.total_recipients || 0);
+          bar.style.width = (total ? Math.min(100, Math.round((Number(c.sent_count || 0) / total) * 100)) : 0) + '%';
+        }
+        Object.keys(d.recipients || {}).forEach(function (k) {
+          var el = document.getElementById('r-' + k);
+          if (el) el.textContent = fmt(d.recipients[k]);
+        });
+        var badge = document.getElementById('statusBadge');
+        if (badge) badge.textContent = c.status;
+        if (['queued', 'syncing', 'sending'].indexOf(c.status) !== -1) {
+          setTimeout(poll, 5000);
+        } else {
+          window.location.reload();
+        }
+      })
+      .catch(function () { setTimeout(poll, 8000); });
+  }
+  setTimeout(poll, 4000);
+})();
+</script>
+<% } %>
+
+<%- include('../partials/shell-bottom') %>

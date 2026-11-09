@@ -1,0 +1,164 @@
+<%- include('../partials/shell-top', { title: 'Integrations', active: 'settings' }) %>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Settings &amp; integrations</h1>
+    <p class="sub">Connect campaign delivery and your mailbox. Credentials are encrypted at rest and never shown once saved.</p>
+  </div>
+</div>
+
+<div class="tabs">
+  <a class="tab active" href="/settings">Integrations</a>
+  <a class="tab" href="/auth/users">Team &amp; access</a>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; align-items:start;">
+  <div class="card">
+    <div class="card-head">
+      <h2>Provider status</h2>
+      <div class="spacer"></div>
+      <span class="small muted">Live check</span>
+    </div>
+    <div class="card-body">
+      <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
+        <div>
+          <div style="font-weight:600;color:var(--ink);">Campaign delivery</div>
+          <div class="small muted"><%= providerStatus.delivery.active %></div>
+        </div>
+        <span class="badge <%= providerStatus.delivery.configured ? 'badge-green' : 'badge-amber' %>">
+          <span class="badge-dot"></span><%= providerStatus.delivery.configured ? 'configured' : 'not set' %>
+        </span>
+      </div>
+      <div class="row between" style="padding:9px 0;">
+        <div>
+          <div style="font-weight:600;color:var(--ink);">Mailbox</div>
+          <div class="small muted">Inbox &amp; individual sending &middot; <span class="mono"><%= providerStatus.mailbox.active %></span></div>
+        </div>
+        <span class="badge <%= providerStatus.mailbox.configured ? 'badge-green' : 'badge-amber' %>">
+          <span class="badge-dot"></span><%= providerStatus.mailbox.configured ? 'configured' : 'not set' %>
+        </span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="small muted mb-1">Delivery providers</div>
+      <% deliveryProviders.forEach(function (p) { %>
+        <div class="row between small" style="padding:4px 0;">
+          <span><%= p.label %></span>
+          <span class="badge <%= p.configured ? 'badge-green' : 'badge-amber' %>">
+            <span class="badge-dot"></span><%= p.configured ? 'ready' : 'not set' %>
+          </span>
+        </div>
+      <% }); %>
+
+      <div class="divider"></div>
+
+      <div class="row wrap" style="gap:8px;">
+        <form method="post" action="/settings/test/delivery">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-sm" type="submit">Test delivery connection</button>
+        </form>
+        <form method="post" action="/settings/test/mailbox">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-sm" type="submit">Test mailbox connection</button>
+        </form>
+      </div>
+      <p class="small muted mt-2 mb-0">Tests call the provider&rsquo;s live <span class="mono">verify()</span> &mdash; success is only reported when the provider confirms it.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Cloudflare Email Routing</h2></div>
+    <div class="card-body">
+      <p class="small muted mb-2">
+        Cloudflare Email Routing is <strong>forward-only</strong> infrastructure: it receives mail addressed to
+        your domain and forwards it to a real mailbox. It is <strong>not</strong> an IMAP mailbox and is never
+        queried by this app. Read and send mail through the mailbox credentials below.
+      </p>
+      <% if (routingNote) { %>
+        <div class="alert"><strong>Operator note</strong><%= routingNote %></div>
+      <% } else { %>
+        <p class="small faint mb-0">Set the <span class="mono">CLOUDFLARE_ROUTING_NOTE</span> environment variable to show a routing note here.</p>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<form method="post" action="/settings" class="mt-3">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+  <% panels.forEach(function (panel) { %>
+    <div class="mt-3 mb-2">
+      <h2><%= panel.heading %></h2>
+      <p class="small muted mb-0"><%= panel.note %></p>
+    </div>
+
+    <div class="grid grid-2 mb-3">
+      <% panel.groups.forEach(function (group) { %>
+        <div class="card">
+          <div class="card-head"><h2><%= group.title %></h2></div>
+          <div class="card-body">
+            <% if (!group.fields.length) { %>
+              <p class="small muted mb-0">No settings in this group.</p>
+            <% } %>
+            <% group.fields.forEach(function (f) { %>
+              <div class="field">
+                <label for="<%= f.key %>">
+                  <%= f.label %>
+                  <% if (f.configured && f.source === 'database') { %>
+                    <span class="badge badge-blue badge-mono">database</span>
+                  <% } else if (f.configured && f.source === 'environment') { %>
+                    <span class="badge badge-amber badge-mono">environment</span>
+                  <% } %>
+                </label>
+
+                <% if (f.type === 'bool') { %>
+                  <label class="check">
+                    <input type="checkbox" id="<%= f.key %>" name="<%= f.key %>" value="on" <%= f.checked ? 'checked' : '' %> <%= f.disabled ? 'disabled' : '' %>>
+                    <span>Enabled</span>
+                  </label>
+                <% } else if (f.type === 'select') { %>
+                  <select class="select" id="<%= f.key %>" name="<%= f.key %>" <%= f.disabled ? 'disabled' : '' %>>
+                    <% (f.options || []).forEach(function (o) { %>
+                      <option value="<%= o %>" <%= f.value === o ? 'selected' : '' %>><%= o %></option>
+                    <% }); %>
+                  </select>
+                <% } else if (f.secret) { %>
+                  <input class="input" type="password" id="<%= f.key %>" name="<%= f.key %>"
+                         autocomplete="new-password" spellcheck="false"
+                         placeholder="<%= f.configured ? '•••••••• (saved)' : 'Not set' %>"
+                         <%= f.disabled ? 'disabled' : '' %>>
+                <% } else if (f.type === 'number') { %>
+                  <input class="input" type="number" id="<%= f.key %>" name="<%= f.key %>" value="<%= f.value %>" <%= f.disabled ? 'disabled' : '' %>>
+                <% } else { %>
+                  <input class="input" type="text" id="<%= f.key %>" name="<%= f.key %>" value="<%= f.value %>" <%= f.disabled ? 'disabled' : '' %>>
+                <% } %>
+
+                <% if (f.disabled) { %>
+                  <div class="hint">Set by environment variable <span class="mono"><%= f.env %></span> &mdash; read-only here. Clear it in the environment to edit this field.</div>
+                <% } else if (f.secret) { %>
+                  <% if (f.configured) { %>
+                    <label class="check small muted mt-1">
+                      <input type="checkbox" name="clear_<%= f.key %>" value="1"> Clear the saved value (leave empty to keep it)
+                    </label>
+                  <% } else { %>
+                    <div class="hint">Leave empty to keep the current value.</div>
+                  <% } %>
+                <% } %>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  <% }); %>
+
+  <div class="card">
+    <div class="card-body row between">
+      <div class="small muted">Empty secret fields keep their saved value. Values set by the environment are read-only here.</div>
+      <button class="btn btn-primary" type="submit">Save settings</button>
+    </div>
+  </div>
+</form>
+
+<%- include('../partials/shell-bottom') %>

@@ -1,0 +1,115 @@
+<%- include('../partials/shell-top', { title: 'Import subscribers', active: 'contacts' }) %>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Import subscribers</h1>
+    <p class="sub">Bring in a contact list from a CSV or TXT file. Duplicates are de-duplicated and suppressed addresses are skipped.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/contacts">Back to contacts</a>
+  </div>
+</div>
+
+<% if (result) { %>
+  <div class="card mb-3">
+    <div class="card-head">
+      <h2>Import result</h2>
+      <div class="spacer"></div>
+      <span class="badge badge-green"><%= h.formatNumber(result.imported) %> imported</span>
+    </div>
+    <div class="card-body">
+      <div class="grid grid-4">
+        <div class="card stat">
+          <div class="label">Rows read</div>
+          <div class="value mono"><%= h.formatNumber(result.totalRows) %></div>
+        </div>
+        <div class="card stat">
+          <div class="label">Imported</div>
+          <div class="value mono"><%= h.formatNumber(result.imported) %></div>
+          <div class="delta up">new contacts</div>
+        </div>
+        <div class="card stat">
+          <div class="label">Duplicates skipped</div>
+          <div class="value mono"><%= h.formatNumber(result.duplicates) %></div>
+          <div class="delta">already in the file or database</div>
+        </div>
+        <div class="card stat">
+          <div class="label">Suppressed skipped</div>
+          <div class="value mono"><%= h.formatNumber(result.suppressed) %></div>
+          <div class="delta"><%= h.formatNumber(result.invalid) %> invalid rows</div>
+        </div>
+      </div>
+      <p class="small muted mt-2 mb-0">
+        File <strong><%= result.fileName %></strong> · delimiter <strong><%= result.delimiter %></strong> ·
+        header row <%= result.hasHeader ? 'detected' : 'not detected' %> ·
+        email mapped to column <strong>#<%= result.mapped.email %></strong><% if (result.mapped.first_name) { %>, first name #<%= result.mapped.first_name %><% } %><% if (result.mapped.last_name) { %>, last name #<%= result.mapped.last_name %><% } %><% if (result.mapped.company) { %>, company #<%= result.mapped.company %><% } %><% if (result.mapped.phone) { %>, phone #<%= result.mapped.phone %><% } %>.
+        <% if (result.listName) { %>Added to list <strong><%= result.listName %></strong>.<% } %>
+      </p>
+      <div class="row mt-2">
+        <a class="btn" href="/contacts">View contacts</a>
+        <a class="btn btn-ghost" href="/contacts/import">Import another file</a>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<div class="grid" style="grid-template-columns: 1.4fr 1fr; align-items:start;">
+  <div class="card">
+    <div class="card-head"><h2>Upload a file</h2></div>
+    <div class="card-body">
+      <form id="import-form" method="post" action="/contacts/import" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="field">
+          <label for="file">CSV or TXT file</label>
+          <input class="input" type="file" id="file" name="file" accept=".csv,.txt,text/csv,text/plain" required>
+          <div class="hint">Up to 10 MB. Comma, semicolon or tab delimited.</div>
+        </div>
+        <div class="field">
+          <label for="list_id">Add imported contacts to a list</label>
+          <select class="select" id="list_id" name="list_id">
+            <option value="">Do not add to a list</option>
+            <% lists.forEach(function (l) { %>
+              <option value="<%= l.id %>" <%= listId === l.id ? 'selected' : '' %>><%= l.name %></option>
+            <% }); %>
+          </select>
+          <div class="hint">Optional — you can add contacts to lists later.</div>
+        </div>
+        <button class="btn btn-primary" type="submit">Upload &amp; import</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>How columns are mapped</h2></div>
+    <div class="card-body">
+      <ol class="muted small" style="padding-left:18px;margin:0;line-height:1.9;">
+        <li>The first row is treated as a header when it names an <strong>email</strong> column (e.g. <span class="mono">email</span>, <span class="mono">e-mail</span>, <span class="mono">email address</span>). Otherwise the first row is read as data.</li>
+        <li>The email column is matched by name; if none is found, the <strong>first column</strong> is assumed to be the email.</li>
+        <li>Recognised headers: <span class="mono">email</span>, <span class="mono">first_name</span>, <span class="mono">last_name</span>, <span class="mono">company</span>, <span class="mono">phone</span>.</li>
+        <li>Each row's email is validated. Invalid rows, duplicates (within the file and against existing contacts) and suppressed addresses are skipped.</li>
+        <li>Valid rows are inserted in batches, tagged with source <span class="mono">import</span>.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var form = document.getElementById('import-form');
+    if (!form || typeof window.fetch !== 'function') return;
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var tokenEl = form.querySelector('input[name="_csrf"]');
+      fetch(form.getAttribute('action'), {
+        method: 'POST',
+        body: new FormData(form),
+        credentials: 'same-origin',
+        headers: { 'x-csrf-token': tokenEl ? tokenEl.value : '', 'Accept': 'text/html' }
+      }).then(function (r) { return r.text(); }).then(function (html) {
+        document.open(); document.write(html); document.close();
+      }).catch(function () { form.submit(); });
+    });
+  })();
+</script>
+
+<%- include('../partials/shell-bottom') %>

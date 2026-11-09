@@ -1,0 +1,5 @@
+<% if (locals.flash && flash.message) { %>
+  <div class="flash flash-<%= flash.type === 'error' ? 'error' : (flash.type === 'warn' ? 'warn' : (flash.type === 'info' ? 'info' : 'success')) %>">
+    <%= flash.message %>
+  </div>
+<% } %>

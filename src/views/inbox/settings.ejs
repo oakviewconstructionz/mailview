@@ -1,0 +1,48 @@
+<%- include('../partials/shell-top', { title: 'Mailbox status', active: 'inbox' }) %>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Mailbox status</h1>
+    <p class="sub">A read-only check of the connection the inbox uses.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/inbox">Back to inbox</a>
+    <a class="btn btn-primary" href="/settings">Open Settings</a>
+  </div>
+</div>
+
+<div class="card" style="max-width:720px;">
+  <div class="card-head"><h2>Connection</h2></div>
+  <div class="card-body">
+    <div class="row between" style="padding:11px 0;border-bottom:1px solid var(--line-soft);">
+      <div>
+        <div style="font-weight:600;color:var(--ink);">Provider</div>
+        <div class="small muted"><%= providerName %></div>
+      </div>
+      <span class="badge <%= configured ? 'badge-green' : 'badge-amber' %>">
+        <span class="badge-dot"></span><%= configured ? 'configured' : 'not set' %>
+      </span>
+    </div>
+
+    <% if (verify) { %>
+      <div class="row between" style="padding:11px 0;">
+        <div>
+          <div style="font-weight:600;color:var(--ink);">Live verification</div>
+          <div class="small muted"><%= verify.message %></div>
+        </div>
+        <span class="badge <%= verify.ok ? 'badge-green' : 'badge-red' %>">
+          <span class="badge-dot"></span><%= verify.ok ? 'reachable' : 'failed' %>
+        </span>
+      </div>
+    <% } else if (!configured) { %>
+      <div style="padding:11px 0;" class="small muted">
+        Add the IMAP and SMTP credentials in <a href="/settings">Settings → Integrations</a> to enable the inbox.
+      </div>
+    <% } %>
+  </div>
+  <div class="card-foot">
+    <a class="small" href="/settings">Manage mailbox credentials →</a>
+  </div>
+</div>
+
+<%- include('../partials/shell-bottom') %>

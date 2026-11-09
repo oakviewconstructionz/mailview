@@ -1,0 +1,242 @@
+<%- include('../partials/shell-top', { title: isNew ? 'New campaign' : 'Edit campaign', active: 'campaigns' }) %>
+
+<%
+  var tokens = ['{{first_name}}', '{{last_name}}', '{{email}}', '{{company}}', '{{unsubscribe_url}}'];
+  var val = function (field) {
+    if (!campaign) return '';
+    var v = campaign[field];
+    return v === null || v === undefined ? '' : v;
+  };
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1><%= isNew ? 'New campaign' : 'Edit campaign' %></h1>
+    <p class="sub">Choose who receives it, what it says, and how fast it sends. Nothing is sent until you launch it.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="<%= isNew ? '/campaigns' : '/campaigns/' + campaign.id %>">Cancel</a>
+  </div>
+</div>
+
+<form method="post" action="<%= isNew ? '/campaigns' : '/campaigns/' + campaign.id %>" id="campaignForm">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+  <div class="editor-grid">
+    <div class="stack">
+      <div class="card">
+        <div class="card-head"><h2>Basics</h2></div>
+        <div class="card-body">
+          <div class="field">
+            <label for="name">Campaign name</label>
+            <input class="input" id="name" name="name" value="<%= val('name') %>" required maxlength="190" placeholder="e.g. November newsletter">
+          </div>
+          <div class="field">
+            <label for="subject">Subject line</label>
+            <input class="input" id="subject" name="subject" value="<%= val('subject') %>" required maxlength="255" placeholder="What lands in the inbox">
+          </div>
+          <div class="field mb-0">
+            <label for="preheader">Preheader <span class="muted">(optional)</span></label>
+            <input class="input" id="preheader" name="preheader" value="<%= val('preheader') %>" maxlength="255" placeholder="Preview text shown beside the subject">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Audience</h2>
+          <div class="spacer"></div>
+          <span class="badge" id="audienceEstimate">—</span>
+        </div>
+        <div class="card-body">
+          <div class="row-2">
+            <div class="field">
+              <label for="list_id">List</label>
+              <select class="select" id="list_id" name="list_id" data-estimate>
+                <option value="">All subscribed contacts</option>
+                <% lists.forEach(function (l) { %>
+                  <option value="<%= l.id %>" <%= String(val('list_id')) === String(l.id) ? 'selected' : '' %>><%= l.name %> · <%= h.formatNumber(l.subscriber_count) %></option>
+                <% }); %>
+              </select>
+            </div>
+            <div class="field">
+              <label for="segment_id">Segment <span class="muted">(optional)</span></label>
+              <select class="select" id="segment_id" name="segment_id" data-estimate>
+                <option value="">No segment</option>
+                <% segments.forEach(function (s) { %>
+                  <option value="<%= s.id %>" <%= String(val('segment_id')) === String(s.id) ? 'selected' : '' %>><%= s.name %></option>
+                <% }); %>
+              </select>
+            </div>
+          </div>
+          <div class="hint">
+            Unsubscribed, bounced and complained addresses are removed automatically. Duplicate addresses are never sent twice.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Content</h2>
+          <div class="spacer"></div>
+          <select class="select" id="templatePicker" style="max-width:230px;">
+            <option value="">— Load from template —</option>
+            <% templates.forEach(function (t) { %>
+              <option value="<%= t.id %>" <%= String(val('template_id')) === String(t.id) ? 'selected' : '' %>><%= t.name %></option>
+            <% }); %>
+          </select>
+        </div>
+        <input type="hidden" name="template_id" id="template_id" value="<%= val('template_id') %>">
+        <div class="card-body">
+          <div class="toolbar mb-2" style="gap:6px;">
+            <span class="small muted">Insert token:</span>
+            <% tokens.forEach(function (tk) { %>
+              <button type="button" class="pill" data-token="<%= tk %>"><%= tk %></button>
+            <% }); %>
+          </div>
+          <div class="field">
+            <label for="htmlBody">HTML body</label>
+            <textarea class="textarea mono" id="htmlBody" name="html" rows="16" data-preview-into="#htmlPreview"><%= val('html') %></textarea>
+          </div>
+          <div class="field mb-0">
+            <label for="textBody">Plain-text body <span class="muted">(optional)</span></label>
+            <textarea class="textarea mono" id="textBody" name="text" rows="6"><%= val('text') %></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Sender identity</h2></div>
+        <div class="card-body">
+          <div class="row-2">
+            <div class="field">
+              <label for="from_name">From name</label>
+              <input class="input" id="from_name" name="from_name" value="<%= val('from_name') %>" maxlength="190" placeholder="OakView Construction">
+            </div>
+            <div class="field">
+              <label for="from_email">From email</label>
+              <input class="input" id="from_email" name="from_email" type="email" value="<%= val('from_email') %>" maxlength="190" placeholder="hello@oak-viewconstruction.com">
+            </div>
+          </div>
+          <div class="field mb-0">
+            <label for="reply_to">Reply-to <span class="muted">(optional)</span></label>
+            <input class="input" id="reply_to" name="reply_to" type="email" value="<%= val('reply_to') %>" maxlength="190" placeholder="Replies go here">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Delivery throttling</h2></div>
+        <div class="card-body">
+          <div class="hint mb-2">Leave blank to use the defaults from Settings. Sending always runs in the background and never exceeds the configured rate.</div>
+          <div class="row-2">
+            <div class="field">
+              <label for="batch_size">Batch size</label>
+              <input class="input" id="batch_size" name="batch_size" type="number" min="1" value="<%= val('batch_size') %>" placeholder="<%= defaults.batchSize %>">
+            </div>
+            <div class="field">
+              <label for="interval_seconds">Pause between batches (seconds)</label>
+              <input class="input" id="interval_seconds" name="interval_seconds" type="number" min="0" value="<%= val('interval_seconds') %>" placeholder="<%= defaults.intervalSeconds %>">
+            </div>
+          </div>
+          <div class="field mb-0">
+            <label for="max_recipients">Max recipients for this campaign</label>
+            <input class="input" id="max_recipients" name="max_recipients" type="number" min="1" value="<%= val('max_recipients') %>" placeholder="<%= defaults.maxRecipients %>">
+            <div class="hint">Hard cap: <%= h.formatNumber(defaults.maxRecipients) %>. Sending rate is limited to <%= h.formatNumber(defaults.ratePerMinute) %>/min across <%= defaults.concurrency %> concurrent connections.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn btn-primary" type="submit"><%= isNew ? 'Save draft' : 'Save changes' %></button>
+        <a class="btn" href="<%= isNew ? '/campaigns' : '/campaigns/' + campaign.id %>">Cancel</a>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="card-head"><h2>Live preview</h2></div>
+        <div class="card-body">
+          <div class="preview-frame">
+            <div class="chrome">Rendered from the HTML body</div>
+            <iframe id="htmlPreview" class="preview-frame" title="Campaign preview"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script>
+(function () {
+  var form = document.getElementById('campaignForm');
+  if (!form) return;
+
+  // ---- audience estimate -------------------------------------------------
+  var estimateEl = document.getElementById('audienceEstimate');
+  var listSel = document.getElementById('list_id');
+  var segSel = document.getElementById('segment_id');
+  function refreshEstimate() {
+    if (!estimateEl) return;
+    estimateEl.textContent = 'counting…';
+    var qs = '?list_id=' + encodeURIComponent(listSel.value || '') + '&segment_id=' + encodeURIComponent(segSel.value || '');
+    fetch('/campaigns/audience-estimate' + qs, { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        estimateEl.textContent = d.count + ' recipient' + (d.count === 1 ? '' : 's') + (d.withinCap ? '' : ' (over cap)');
+        estimateEl.className = 'badge ' + (d.withinCap ? 'badge-blue' : 'badge-red');
+      })
+      .catch(function () { estimateEl.textContent = 'unavailable'; });
+  }
+  [listSel, segSel].forEach(function (el) { if (el) el.addEventListener('change', refreshEstimate); });
+  refreshEstimate();
+
+  // ---- token insertion ---------------------------------------------------
+  var ta = document.getElementById('htmlBody');
+  document.querySelectorAll('[data-token]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!ta) return;
+      var token = btn.getAttribute('data-token');
+      var start = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length;
+      var end = typeof ta.selectionEnd === 'number' ? ta.selectionEnd : ta.value.length;
+      var value = ta.value;
+      ta.value = value.slice(0, start) + token + value.slice(end);
+      var caret = start + token.length;
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+
+  // ---- load from template ------------------------------------------------
+  var picker = document.getElementById('templatePicker');
+  var hiddenTemplate = document.getElementById('template_id');
+  if (picker) {
+    picker.addEventListener('change', function () {
+      var id = picker.value;
+      if (hiddenTemplate) hiddenTemplate.value = id;
+      if (!id) return;
+      if (ta && ta.value.trim() && !window.confirm('Replace the current content with this template?')) {
+        picker.value = '';
+        if (hiddenTemplate) hiddenTemplate.value = '';
+        return;
+      }
+      fetch('/campaigns/template/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (t) {
+          if (!t || t.error) return;
+          var subject = document.getElementById('subject');
+          var preheader = document.getElementById('preheader');
+          var text = document.getElementById('textBody');
+          if (subject && t.subject) subject.value = t.subject;
+          if (preheader) preheader.value = t.preheader || '';
+          if (ta) { ta.value = t.html || ''; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+          if (text) text.value = t.text || '';
+        })
+        .catch(function () {});
+    });
+  }
+})();
+</script>
+
+<%- include('../partials/shell-bottom') %>

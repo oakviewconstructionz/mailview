@@ -1,0 +1,159 @@
+<%- include('../partials/shell-top', { title: 'Contacts', active: 'contacts' }) %>
+<%
+  var statusBadge = function (st) {
+    if (st === 'subscribed') return 'badge-green';
+    if (st === 'bounced' || st === 'complained') return 'badge-red';
+    if (st === 'pending') return 'badge-blue';
+    return 'badge-amber';
+  };
+  var pageUrl = function (p) {
+    var parts = [];
+    if (q) parts.push('q=' + encodeURIComponent(q));
+    if (status) parts.push('status=' + encodeURIComponent(status));
+    if (listId) parts.push('list_id=' + listId);
+    parts.push('page=' + p);
+    return '/contacts?' + parts.join('&');
+  };
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Contacts</h1>
+    <p class="sub">Your audience — subscribers, list membership and status at a glance.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/contacts/export<%= exportQuery ? '?' + exportQuery : '' %>">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M4 18v2h16v-2"/></svg>
+      Export CSV
+    </a>
+    <a class="btn" href="/contacts/import">Import</a>
+    <a class="btn btn-primary" href="/contacts/new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add subscriber
+    </a>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-3">
+  <div class="card stat">
+    <div class="label">Total contacts</div>
+    <div class="value mono"><%= h.formatNumber(counts.total || 0) %></div>
+    <div class="delta"><%= h.formatNumber(pg.total) %> in current view</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Subscribed</div>
+    <div class="value mono"><%= h.formatNumber(counts.subscribed || 0) %></div>
+    <div class="delta up">ready to receive</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Unsubscribed</div>
+    <div class="value mono"><%= h.formatNumber(counts.unsubscribed || 0) %></div>
+    <div class="delta">opted out</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Suppressed</div>
+    <div class="value mono"><%= h.formatNumber(suppressed) %></div>
+    <div class="delta"><a href="/lists/suppressions">Manage suppression list</a></div>
+  </div>
+</div>
+
+<form class="toolbar mb-3" method="get" action="/contacts">
+  <div class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input class="input" type="search" name="q" value="<%= q %>" placeholder="Search email, name or company">
+  </div>
+  <select class="select" name="status" style="width:auto;">
+    <option value="">All statuses</option>
+    <% statuses.forEach(function (s) { %>
+      <option value="<%= s %>" <%= status === s ? 'selected' : '' %>><%= s %></option>
+    <% }); %>
+  </select>
+  <select class="select" name="list_id" style="width:auto;">
+    <option value="">All lists</option>
+    <% lists.forEach(function (l) { %>
+      <option value="<%= l.id %>" <%= listId === l.id ? 'selected' : '' %>><%= l.name %></option>
+    <% }); %>
+  </select>
+  <button class="btn" type="submit">Filter</button>
+  <% if (q || status || listId) { %><a class="btn btn-ghost" href="/contacts">Clear</a><% } %>
+</form>
+
+<% if (!rows.length) { %>
+  <div class="card">
+    <%- include('../partials/empty', {
+      heading: 'No contacts found',
+      message: 'Adjust your filters, or add your first subscriber to get started.',
+      actionHref: '/contacts/new',
+      actionLabel: 'Add subscriber'
+    }) %>
+  </div>
+<% } else { %>
+  <form method="post" action="/contacts/bulk">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="card">
+      <div class="card-head">
+        <h2>Contacts</h2>
+        <div class="spacer"></div>
+        <span class="badge"><%= h.formatNumber(pg.total) %> matching</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th style="width:34px;"><input type="checkbox" title="Select all" onclick="var t=this.closest('table');t.querySelectorAll('input[name=ids]').forEach(function(c){c.checked=this.checked;},this);"></th>
+              <th>Subscriber</th>
+              <th>Status</th>
+              <th class="num">Lists</th>
+              <th>Source</th>
+              <th>Added</th>
+              <th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% rows.forEach(function (s) { %>
+            <tr>
+              <td><input type="checkbox" name="ids" value="<%= s.id %>"></td>
+              <td>
+                <a class="row-link" href="/contacts/<%= s.id %>"><%= s.email %></a>
+                <div class="small muted truncate" style="max-width:320px;">
+                  <%= [s.first_name, s.last_name].filter(Boolean).join(' ') || '—' %><%= s.company ? ' · ' + s.company : '' %>
+                </div>
+              </td>
+              <td>
+                <span class="badge <%= statusBadge(s.status) %>"><span class="badge-dot"></span><%= s.status %></span>
+              </td>
+              <td class="num"><%= h.formatNumber(s.list_count) %></td>
+              <td class="small muted"><%= s.source %></td>
+              <td class="small muted nowrap"><%= h.formatDate(s.created_at) %></td>
+              <td class="text-right"><a class="small" href="/contacts/<%= s.id %>">Open</a></td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <div class="card-foot row between">
+        <div class="row" style="gap:8px;">
+          <select class="select" name="action" style="width:auto;">
+            <option value="">Bulk action…</option>
+            <option value="delete">Delete selected</option>
+            <option value="suppress">Suppress selected</option>
+          </select>
+          <button class="btn btn-sm" type="submit" data-confirm="Apply this action to the selected contacts?">Apply</button>
+        </div>
+        <span class="small muted">Tick rows above, then apply.</span>
+      </div>
+    </div>
+  </form>
+
+  <% if (pg.totalPages > 1) { %>
+    <div class="row between mt-3">
+      <span class="small muted">Page <%= pg.page %> of <%= pg.totalPages %></span>
+      <div class="row" style="gap:8px;">
+        <% if (pg.hasPrev) { %><a class="btn btn-sm" href="<%= pageUrl(pg.page - 1) %>">Previous</a><% } %>
+        <% if (pg.hasNext) { %><a class="btn btn-sm" href="<%= pageUrl(pg.page + 1) %>">Next</a><% } %>
+      </div>
+    </div>
+  <% } %>
+<% } %>
+
+<%- include('../partials/shell-bottom') %>

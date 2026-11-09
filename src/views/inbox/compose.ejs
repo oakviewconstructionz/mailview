@@ -1,0 +1,103 @@
+<%- include('../partials/shell-top', { title: 'Compose', active: 'inbox' }) %>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Compose</h1>
+    <p class="sub">Send a message from your connected mailbox.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/inbox">Back to inbox</a>
+  </div>
+</div>
+
+<% if (!configured) { %>
+  <div class="alert mb-3">
+    <strong>Mailbox not connected.</strong>
+    Sending is blocked until IMAP/SMTP credentials are added.
+    <a href="/settings">Open Settings → Integrations</a>. Nothing will be simulated.
+  </div>
+<% } %>
+
+<div id="composePanel" style="max-width:760px;">
+  <% if (error) { %>
+    <div class="flash flash-error" style="margin-bottom:14px;"><%= error %></div>
+  <% } %>
+
+  <form id="composeForm" method="post" action="/inbox/compose" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="inReplyTo" value="<%= inReplyTo || '' %>">
+    <input type="hidden" name="references" value="<%= references || '' %>">
+
+    <div class="field">
+      <label for="to">To</label>
+      <input class="input" id="to" name="to" type="text" value="<%= draft.to %>" placeholder="name@example.com, another@example.com" required>
+    </div>
+    <div class="row" style="gap:12px;">
+      <div class="field" style="flex:1;">
+        <label for="cc">Cc</label>
+        <input class="input" id="cc" name="cc" type="text" value="<%= draft.cc %>" placeholder="optional">
+      </div>
+      <div class="field" style="flex:1;">
+        <label for="bcc">Bcc</label>
+        <input class="input" id="bcc" name="bcc" type="text" value="<%= draft.bcc %>" placeholder="optional">
+      </div>
+    </div>
+    <div class="field">
+      <label for="subject">Subject</label>
+      <input class="input" id="subject" name="subject" type="text" value="<%= draft.subject %>" required>
+    </div>
+    <div class="field">
+      <label for="body">Message</label>
+      <textarea class="textarea" id="body" name="body" rows="12" style="width:100%;font-family:inherit;"><%= draft.body %></textarea>
+    </div>
+    <div class="field">
+      <label for="attachments">Attachments</label>
+      <input class="input" id="attachments" name="attachments" type="file" multiple>
+      <div class="hint">Up to 8 files, 15 MB each.</div>
+    </div>
+
+    <div class="row" style="gap:10px;">
+      <button class="btn btn-primary" type="submit">Send</button>
+      <a class="btn" href="/inbox">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  function bind() {
+    var form = document.getElementById('composeForm');
+    if (!form || form.dataset.bound === '1') return;
+    form.dataset.bound = '1';
+
+    form.addEventListener('submit', function (e) {
+      if (!window.fetch || !window.FormData) return; // let the browser submit (with _csrf field)
+      var tokenInput = form.querySelector('input[name="_csrf"]');
+      var res = tokenInput ? tokenInput.value : '';
+      e.preventDefault();
+      // A multipart body is not parsed by the app's CSRF middleware, so the token
+      // is sent as a header. redirect:'manual' keeps the success flash intact for
+      // the navigation that follows (so the "Message sent" notice is shown).
+      fetch(form.getAttribute('action'), {
+        method: 'POST',
+        body: new FormData(form),
+        headers: { 'X-CSRF-Token': res, 'Accept': 'text/html' },
+        credentials: 'same-origin',
+        redirect: 'manual'
+      }).then(function (r) {
+        if (r.type === 'opaqueredirect' || r.status === 0 || r.ok) { window.location = '/inbox'; return null; }
+        return r.text().then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var fresh = doc.getElementById('composePanel');
+          var cur = document.getElementById('composePanel');
+          if (fresh && cur) { cur.innerHTML = fresh.innerHTML; bind(); }
+          else { window.location.reload(); }
+        });
+      }).catch(function () { form.submit(); });
+    });
+  }
+  bind();
+})();
+</script>
+
+<%- include('../partials/shell-bottom') %>

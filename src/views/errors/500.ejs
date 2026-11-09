@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Error · <%= appName %></title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <div style="min-height:100vh;display:grid;place-items:center;padding:24px;">
+    <div class="card" style="max-width:460px;padding:34px;text-align:center;">
+      <div class="badge badge-amber" style="margin-bottom:16px;">Something went wrong</div>
+      <h1 style="margin-bottom:8px;">We hit a problem</h1>
+      <% if (locals.message) { %>
+        <div class="alert" style="text-align:left;margin-bottom:16px;"><%= message %></div>
+      <% } else { %>
+        <p class="muted">An unexpected error occurred on our side. Please try again, and let your administrator know if it persists.</p>
+      <% } %>
+      <a class="btn btn-primary" href="/">Back to overview</a>
+    </div>
+  </div>
+</body>
+</html>

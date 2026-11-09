@@ -1,0 +1,132 @@
+<%- include('../partials/shell-top', { title: sub.email, active: 'contacts' }) %>
+<%
+  var statusBadge = function (st) {
+    if (st === 'subscribed') return 'badge-green';
+    if (st === 'bounced' || st === 'complained') return 'badge-red';
+    if (st === 'pending') return 'badge-blue';
+    return 'badge-amber';
+  };
+  var fullName = [sub.first_name, sub.last_name].filter(Boolean).join(' ');
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1><%= fullName || sub.email %></h1>
+    <p class="sub">
+      <span class="badge <%= statusBadge(sub.status) %>"><span class="badge-dot"></span><%= sub.status %></span>
+      <span class="muted" style="margin-left:8px;">added <%= h.formatDate(sub.created_at) %></span>
+    </p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/contacts/<%= sub.id %>/edit">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      Edit
+    </a>
+    <% if (sub.status !== 'unsubscribed') { %>
+      <form method="post" action="/contacts/<%= sub.id %>/suppress" data-confirm="Add this address to the suppression list? It will never be emailed again.">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="btn" type="submit">Suppress</button>
+      </form>
+    <% } %>
+    <form method="post" action="/contacts/<%= sub.id %>/delete" data-confirm="Permanently delete this contact?">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <button class="btn btn-danger" type="submit">Delete</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr; align-items:start;">
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>Recent campaign activity</h2></div>
+      <% if (!activity.length) { %>
+        <div class="card-body">
+          <p class="muted small mb-0">This contact has not been included in any campaign yet.</p>
+        </div>
+      <% } else { %>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr><th>Campaign</th><th>Status</th><th>Queued</th><th>Opened</th><th>Clicked</th></tr>
+            </thead>
+            <tbody>
+              <% activity.forEach(function (a) { %>
+              <tr>
+                <td>
+                  <a class="row-link" href="/campaigns/<%= a.campaign_id %>"><%= a.campaign_name %></a>
+                  <div class="small muted truncate" style="max-width:280px;"><%= a.campaign_subject %></div>
+                </td>
+                <td><span class="badge <%= statusBadge(a.status === 'delivered' || a.status === 'sent' ? 'subscribed' : (a.status === 'unsubscribed' ? 'unsubscribed' : 'pending')) %>"><span class="badge-dot"></span><%= a.status %></span></td>
+                <td class="small muted nowrap"><%= a.queued_at ? h.timeAgo(a.queued_at) : '—' %></td>
+                <td class="small muted nowrap"><%= a.opened_at ? h.timeAgo(a.opened_at) : '—' %></td>
+                <td class="small muted nowrap"><%= a.clicked_at ? h.timeAgo(a.clicked_at) : '—' %></td>
+              </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Profile</h2></div>
+      <div class="card-body">
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
+          <span class="muted small">Email</span><span style="font-weight:600;color:var(--ink);"><%= sub.email %></span>
+        </div>
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
+          <span class="muted small">Name</span><span style="color:var(--ink);"><%= fullName || '—' %></span>
+        </div>
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
+          <span class="muted small">Company</span><span style="color:var(--ink);"><%= sub.company || '—' %></span>
+        </div>
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
+          <span class="muted small">Phone</span><span style="color:var(--ink);"><%= sub.phone || '—' %></span>
+        </div>
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
+          <span class="muted small">Source</span><span style="color:var(--ink);"><%= sub.source %></span>
+        </div>
+        <div class="row between" style="padding:9px 0;">
+          <span class="muted small">Last updated</span><span class="muted small"><%= h.formatDate(sub.updated_at) %></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head">
+        <h2>Lists</h2>
+        <div class="spacer"></div>
+        <a class="small" href="/contacts/<%= sub.id %>/edit">Edit</a>
+      </div>
+      <div class="card-body tight">
+        <% if (!lists.length) { %>
+          <p class="muted small mb-0" style="padding:6px 0;">Not on any list yet.</p>
+        <% } else { %>
+          <% lists.forEach(function (l) { %>
+            <div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line-soft);">
+              <a href="/lists/<%= l.id %>" style="font-weight:600;"><%= l.name %></a>
+              <span class="small muted"><%= h.formatDate(l.added_at) %></span>
+            </div>
+          <% }); %>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Suppression</h2></div>
+      <div class="card-body">
+        <% if (suppressed) { %>
+          <span class="badge badge-red"><span class="badge-dot"></span>suppressed</span>
+          <p class="small muted mt-2 mb-0">Reason: <strong><%= suppressed.reason %></strong><%= suppressed.detail ? ' — ' + suppressed.detail : '' %><br>Added <%= h.formatDate(suppressed.created_at) %>.</p>
+          <div class="mt-2"><a class="small" href="/lists/suppressions">Manage suppression list</a></div>
+        <% } else { %>
+          <p class="muted small mb-0">This address is not suppressed and can receive campaigns.</p>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../partials/shell-bottom') %>

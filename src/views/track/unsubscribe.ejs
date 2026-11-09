@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Unsubscribe · <%= appName %></title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <div style="min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--bg);">
+    <div class="card" style="max-width:460px;width:100%;padding:34px;text-align:center;">
+      <div class="brand-mark" style="margin:0 auto 16px;">OV</div>
+      <% if (done) { %>
+        <h1 style="margin-bottom:8px;">You&rsquo;re unsubscribed</h1>
+        <p class="muted">We&rsquo;ve removed <strong><%= email || 'this address' %></strong> from future campaigns. You won&rsquo;t receive further marketing email from us.</p>
+      <% } else if (!email) { %>
+        <h1 style="margin-bottom:8px;">Link not recognised</h1>
+        <p class="muted">This unsubscribe link is no longer valid, or the address has already been removed.</p>
+      <% } else { %>
+        <h1 style="margin-bottom:8px;">Unsubscribe</h1>
+        <p class="muted">Stop sending marketing email to <strong><%= email %></strong>?</p>
+        <form method="post" action="/t/u/<%= token %>/confirm">
+          <button class="btn btn-primary btn-block btn-lg" type="submit">Yes, unsubscribe me</button>
+        </form>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

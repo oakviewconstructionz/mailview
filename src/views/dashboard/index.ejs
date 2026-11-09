@@ -1,0 +1,149 @@
+<%- include('../partials/shell-top', { title: 'Overview', active: 'overview' }) %>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Good to see you, <%= currentUser.name.split(' ')[0] %>.</h1>
+    <p class="sub">Here&rsquo;s how your email workspace is performing.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/templates">Templates</a>
+    <a class="btn btn-primary" href="/campaigns/new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      New campaign
+    </a>
+  </div>
+</div>
+
+<% if (!integrations.delivery.configured || !integrations.mailbox.configured) { %>
+  <div class="alert mb-3">
+    <strong>Some integrations still need configuring</strong>
+    <% if (!integrations.mailbox.configured) { %>Mailbox (inbox / sending) is not connected. <% } %>
+    <% if (!integrations.delivery.configured) { %>Campaign delivery is not connected. <% } %>
+    <a href="/settings">Open Settings → Integrations</a> to add credentials. Actions will be blocked until then — nothing is simulated.
+  </div>
+<% } %>
+
+<div class="grid grid-4 mb-3">
+  <div class="card stat">
+    <div class="label">Total subscribers</div>
+    <div class="value mono"><%= h.formatNumber(subs.total) %></div>
+    <div class="delta"><%= h.formatNumber(subs.subscribed) %> active · <%= h.formatNumber(suppressed) %> suppressed</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Campaigns</div>
+    <div class="value mono"><%= h.formatNumber(campaignCount) %></div>
+    <div class="delta"><%= h.formatNumber(totals.campaigns) %> sent or sending</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Emails sent</div>
+    <div class="value mono"><%= h.formatNumber(totals.sent) %></div>
+    <div class="delta"><%= h.formatNumber(totals.delivered) %> confirmed delivered</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Open rate</div>
+    <div class="value mono"><%= totals.openRate.toFixed(1) %>%</div>
+    <div class="bar"><i style="width:<%= Math.min(100, totals.openRate) %>%"></i></div>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-3">
+  <div class="card stat">
+    <div class="label">Click rate</div>
+    <div class="value mono"><%= totals.clickRate.toFixed(1) %>%</div>
+    <div class="bar"><i style="width:<%= Math.min(100, totals.clickRate) %>%"></i></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Bounce rate</div>
+    <div class="value mono"><%= totals.bounceRate.toFixed(1) %>%</div>
+    <div class="bar"><i style="width:<%= Math.min(100, totals.bounceRate) %>%"></i></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Unsubscribes</div>
+    <div class="value mono"><%= h.formatNumber(totals.unsubscribes) %></div>
+    <div class="delta">Auto-suppressed from future sends</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Delivery health</div>
+    <div class="value mono"><%= h.formatNumber(totals.bounces) %></div>
+    <div class="delta">total bounces recorded</div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.6fr 1fr; align-items:start;">
+  <div class="card">
+    <div class="card-head">
+      <h2>Recent campaign activity</h2>
+      <div class="spacer"></div>
+      <a class="btn btn-sm" href="/campaigns">View all</a>
+    </div>
+    <% if (!recent.length) { %>
+      <%- include('../partials/empty', { heading: 'No campaigns yet', message: 'Create your first campaign to start reaching your subscribers.', actionHref: '/campaigns/new', actionLabel: 'Create a campaign' }) %>
+    <% } else { %>
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr><th>Campaign</th><th>Status</th><th class="num">Sent</th><th class="num">Opens</th><th class="num">Clicks</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% recent.forEach(function (c) { %>
+          <tr>
+            <td>
+              <a class="row-link" href="/campaigns/<%= c.id %>"><%= c.name %></a>
+              <div class="small muted truncate" style="max-width:320px;"><%= c.subject %></div>
+            </td>
+            <td>
+              <span class="badge <%= c.status === 'sent' ? 'badge-green' : (c.status === 'sending' ? 'badge-blue' : (c.status === 'failed' ? 'badge-red' : 'badge-amber')) %>">
+                <span class="badge-dot"></span><%= c.status %>
+              </span>
+            </td>
+            <td class="num"><%= h.formatNumber(c.sent_count) %></td>
+            <td class="num"><%= h.formatNumber(c.open_count) %></td>
+            <td class="num"><%= h.formatNumber(c.click_count) %></td>
+            <td class="text-right"><a class="small" href="/campaigns/<%= c.id %>">Details</a></td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>Integrations</h2></div>
+      <div class="card-body tight">
+        <div class="row between" style="padding:11px 0;border-bottom:1px solid var(--line-soft);">
+          <div>
+            <div style="font-weight:600;color:var(--ink);">Campaign delivery</div>
+            <div class="small muted"><%= integrations.delivery.name %></div>
+          </div>
+          <span class="badge <%= integrations.delivery.configured ? 'badge-green' : 'badge-amber' %>">
+            <span class="badge-dot"></span><%= integrations.delivery.configured ? 'connected' : 'not set' %>
+          </span>
+        </div>
+        <div class="row between" style="padding:11px 0;">
+          <div>
+            <div style="font-weight:600;color:var(--ink);">Mailbox</div>
+            <div class="small muted">Inbox &amp; sending</div>
+          </div>
+          <span class="badge <%= integrations.mailbox.configured ? 'badge-green' : 'badge-amber' %>">
+            <span class="badge-dot"></span><%= integrations.mailbox.configured ? 'connected' : 'not set' %>
+          </span>
+        </div>
+      </div>
+      <div class="card-foot"><a class="small" href="/settings">Manage integrations →</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Quick actions</h2></div>
+      <div class="card-body tight">
+        <a class="nav-item" style="color:var(--ink);" href="/inbox?compose=1">Compose a message</a>
+        <a class="nav-item" style="color:var(--ink);" href="/contacts/import">Import subscribers (CSV)</a>
+        <a class="nav-item" style="color:var(--ink);" href="/campaigns/new">Build a campaign</a>
+        <a class="nav-item" style="color:var(--ink);" href="/analytics">Open analytics</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../partials/shell-bottom') %>

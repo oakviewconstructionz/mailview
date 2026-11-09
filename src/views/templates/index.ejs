@@ -1,0 +1,72 @@
+<%- include('../partials/shell-top', { title: 'Templates', active: 'templates' }) %>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Templates</h1>
+    <p class="sub">Reusable email designs you can personalise and drop into any campaign.</p>
+  </div>
+  <div class="row">
+    <a class="btn btn-primary" href="/templates/new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      New template
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>All templates</h2>
+    <div class="spacer"></div>
+    <span class="badge"><%= templates.length %> total</span>
+  </div>
+
+  <% if (!templates.length) { %>
+    <%- include('../partials/empty', { heading: 'No templates yet', message: 'Create a reusable email template to speed up your next campaign.', actionHref: '/templates/new', actionLabel: 'Create a template' }) %>
+  <% } else { %>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Template</th>
+          <th>Preview</th>
+          <th>Updated</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% templates.forEach(function (t) { %>
+        <tr>
+          <td>
+            <a class="row-link" href="/templates/<%= t.id %>/edit"><%= t.name %></a>
+            <div class="small muted truncate" style="max-width:340px;"><%= t.subject || 'No subject set' %></div>
+          </td>
+          <td>
+            <span class="small muted"><%= h.snippet(t.html || t.text || t.preheader || '') || 'Empty body' %></span>
+          </td>
+          <td class="nowrap">
+            <div class="small"><%= h.timeAgo(t.updated_at) %></div>
+            <div class="small muted"><%= h.formatDate(t.updated_at) %></div>
+          </td>
+          <td class="text-right">
+            <div class="row" style="justify-content:flex-end;gap:6px;">
+              <a class="btn btn-sm" href="/templates/<%= t.id %>/edit">Edit</a>
+              <a class="btn btn-sm" href="/templates/<%= t.id %>/preview" target="_blank" rel="noopener">Preview</a>
+              <form method="post" action="/templates/<%= t.id %>/duplicate">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button class="btn btn-sm" type="submit">Duplicate</button>
+              </form>
+              <form method="post" action="/templates/<%= t.id %>/delete" data-confirm="Delete “<%= t.name %>”? This cannot be undone.">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<%- include('../partials/shell-bottom') %>

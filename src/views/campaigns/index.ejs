@@ -1,0 +1,118 @@
+<%- include('../partials/shell-top', { title: 'Campaigns', active: 'campaigns' }) %>
+
+<%
+  var badgeFor = function (s) {
+    return ({
+      draft: '', scheduled: 'badge-blue', queued: 'badge-amber', syncing: 'badge-amber',
+      sending: 'badge-blue', paused: 'badge-amber', sent: 'badge-green', failed: 'badge-red', cancelled: ''
+    })[s] || '';
+  };
+  var filters = ['draft', 'scheduled', 'queued', 'sending', 'sent', 'paused', 'failed', 'cancelled'];
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1>Campaigns</h1>
+    <p class="sub">Build an audience, pick a design and send — up to <%= h.formatNumber(maxRecipients) %> recipients per campaign, delivered in throttled background batches.</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="/settings">Sending settings</a>
+    <a class="btn btn-primary" href="/campaigns/new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      New campaign
+    </a>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-3">
+  <div class="card stat">
+    <div class="label">Total campaigns</div>
+    <div class="value mono"><%= h.formatNumber(total) %></div>
+  </div>
+  <div class="card stat">
+    <div class="label">In progress</div>
+    <div class="value mono"><%= h.formatNumber((byStatus.queued || 0) + (byStatus.syncing || 0) + (byStatus.sending || 0)) %></div>
+    <div class="delta">queued or sending</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Scheduled</div>
+    <div class="value mono"><%= h.formatNumber(byStatus.scheduled || 0) %></div>
+  </div>
+  <div class="card stat">
+    <div class="label">Completed</div>
+    <div class="value mono"><%= h.formatNumber(byStatus.sent || 0) %></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>All campaigns</h2>
+    <div class="spacer"></div>
+    <span class="badge"><%= h.formatNumber(campaigns.length) %> shown</span>
+  </div>
+
+  <div class="card-body tight">
+    <div class="row wrap">
+      <a class="pill <%= !filter ? 'active' : '' %>" href="/campaigns">All</a>
+      <% filters.forEach(function (f) { %>
+        <% if ((byStatus[f] || 0) > 0) { %>
+          <a class="pill <%= filter === f ? 'active' : '' %>" href="/campaigns?status=<%= f %>">
+            <%= f.charAt(0).toUpperCase() + f.slice(1) %> <span class="muted"><%= byStatus[f] %></span>
+          </a>
+        <% } %>
+      <% }); %>
+    </div>
+  </div>
+
+  <% if (!campaigns.length) { %>
+    <%- include('../partials/empty', { heading: 'No campaigns yet', message: 'Create a campaign to send a professional email to a list or segment of your contacts.', actionHref: '/campaigns/new', actionLabel: 'Create a campaign' }) %>
+  <% } else { %>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Campaign</th>
+          <th>Audience</th>
+          <th style="min-width:180px;">Progress</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% campaigns.forEach(function (c) { %>
+        <%
+          var totalR = Number(c.total_recipients) || 0;
+          var sentR = Number(c.sent_count) || 0;
+          var pct = totalR ? Math.min(100, Math.round((sentR / totalR) * 100)) : 0;
+          var when = c.completed_at || c.started_at || c.scheduled_at || c.created_at;
+        %>
+        <tr>
+          <td>
+            <a class="row-link" href="/campaigns/<%= c.id %>"><%= c.name %></a>
+            <div class="small muted truncate" style="max-width:320px;"><%= c.subject %></div>
+          </td>
+          <td class="nowrap mono small"><%= h.formatNumber(totalR) %></td>
+          <td>
+            <div class="progress thin"><i style="width:<%= pct %>%"></i></div>
+            <div class="small muted mt-1"><%= h.formatNumber(sentR) %> / <%= h.formatNumber(totalR) %> sent<%= c.failed_count ? ' · ' + h.formatNumber(c.failed_count) + ' failed' : '' %></div>
+          </td>
+          <td><span class="badge <%= badgeFor(c.status) %>"><%= c.status %></span></td>
+          <td class="nowrap small muted"><%= h.formatDateTime(when) %></td>
+          <td class="text-right">
+            <div class="row" style="justify-content:flex-end;gap:6px;">
+              <a class="btn btn-sm" href="/campaigns/<%= c.id %>">Open</a>
+              <% if (['draft','scheduled','paused','cancelled','failed'].indexOf(c.status) !== -1) { %>
+                <a class="btn btn-sm" href="/campaigns/<%= c.id %>/edit">Edit</a>
+              <% } %>
+            </div>
+          </td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<%- include('../partials/shell-bottom') %>

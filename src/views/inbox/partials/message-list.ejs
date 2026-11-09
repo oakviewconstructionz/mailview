@@ -1,0 +1,28 @@
+<% if (!messages.length) { %>
+  <div style="padding:32px 20px;">
+    <%- include('../../partials/empty', { heading: 'No messages', message: 'Nothing matches this folder or search.' }) %>
+  </div>
+<% } else { %>
+  <% messages.forEach(function (m) { %>
+    <%
+      var link = '/inbox?folder=' + encodeURIComponent(folder) + '&message=' + m.id + (q ? '&q=' + encodeURIComponent(q) : '');
+    %>
+    <a class="msg-row <%= m.is_read ? '' : 'unread' %> <%= (selected && selected.id === m.id) ? 'active' : '' %>" href="<%= link %>">
+      <div class="row between">
+        <span class="msg-from"><%= m.from_name || m.from_email || '(unknown sender)' %></span>
+        <span class="msg-meta"><%= h.timeAgo(m.received_at || m.sent_at || m.synced_at) %></span>
+      </div>
+      <div class="msg-subject"><%= m.subject || '(no subject)' %></div>
+      <div class="msg-snippet"><%= m.snippet || '' %></div>
+      <div class="msg-meta">
+        <% if (!m.is_read) { %><span class="badge badge-blue"><span class="badge-dot"></span>unread</span><% } %>
+        <% if (m.is_starred) { %>
+          <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;color:#e0a72b;"><path d="m12 17.3-6.2 3.7 1.6-7-5.4-4.7 7.1-.6L12 2l2.9 6.7 7.1.6-5.4 4.7 1.6 7z"/></svg>
+        <% } %>
+        <% if (m.has_attachments) { %>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M21.4 11.05 12.25 20.2a6 6 0 0 1-8.49-8.49l9.2-9.2a4 4 0 0 1 5.65 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <% } %>
+      </div>
+    </a>
+  <% }); %>
+<% } %>

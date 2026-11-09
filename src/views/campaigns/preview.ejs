@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title><%= campaign.name %> · Preview</title>
+  <style>
+    body { margin: 0; background: #eef1f6; color: #0d1b2a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px; line-height: 1.55; }
+    .preview-note { position: sticky; top: 0; z-index: 5; padding: 9px 16px; text-align: center;
+      font-size: 12px; letter-spacing: .04em; text-transform: uppercase; font-weight: 700;
+      color: #9a6b12; background: #fbf1dc; border-bottom: 1px solid #f0e0bd; }
+    .preview-shell { max-width: 700px; margin: 24px auto 48px; padding: 0 16px; }
+    .preview-subject { margin-bottom: 14px; padding: 14px 18px; background: #fff; border: 1px solid #e5e8ee;
+      border-radius: 10px; box-shadow: 0 1px 2px rgba(13,27,42,.06); }
+    .preview-subject .k { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: #7b8798; font-weight: 700; }
+    .preview-subject .v { font-weight: 650; color: #0d1b2a; margin-top: 3px; }
+    .preview-subject .ph { color: #7b8798; font-size: 12.5px; margin-top: 5px; }
+    .preview-canvas { background: #fff; border: 1px solid #e5e8ee; border-radius: 10px; overflow: hidden;
+      box-shadow: 0 2px 8px rgba(13,27,42,.06); }
+    .preview-empty { padding: 40px 24px; text-align: center; color: #7b8798; }
+  </style>
+</head>
+<body>
+  <div class="preview-note">Sample data preview — nothing is sent from this page</div>
+
+  <div class="preview-shell">
+    <div class="preview-subject">
+      <div class="k">Subject</div>
+      <div class="v"><%= subject || campaign.name %></div>
+      <% if (preheader) { %><div class="ph"><%= preheader %></div><% } %>
+    </div>
+
+    <div class="preview-canvas">
+      <% if (html) { %>
+        <%- html %>
+      <% } else { %>
+        <div class="preview-empty">This campaign has no content yet.</div>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

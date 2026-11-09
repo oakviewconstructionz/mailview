@@ -1,0 +1,94 @@
+<%- include('../partials/shell-top', { title: mode === 'create' ? 'Add subscriber' : 'Edit subscriber', active: 'contacts' }) %>
+<%
+  var action = mode === 'create' ? '/contacts' : ('/contacts/' + sub.id);
+  var val = function (field) { return sub && sub[field] ? sub[field] : ''; };
+%>
+
+<div class="page-head">
+  <div class="titles">
+    <h1><%= mode === 'create' ? 'Add subscriber' : 'Edit subscriber' %></h1>
+    <p class="sub">
+      <% if (mode === 'create') { %>
+        Add a single contact. If the email already exists we top up any missing details.
+      <% } else { %>
+        Update this contact's profile and list membership.
+      <% } %>
+    </p>
+  </div>
+  <div class="row">
+    <% if (mode === 'edit') { %><a class="btn" href="/contacts/<%= sub.id %>">Cancel</a><% } %>
+    <a class="btn" href="/contacts">Back to contacts</a>
+  </div>
+</div>
+
+<form method="post" action="<%= action %>">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+  <div class="card">
+    <div class="card-head"><h2>Profile</h2></div>
+    <div class="card-body">
+      <div class="field">
+        <label for="email">Email address *</label>
+        <input class="input" type="email" id="email" name="email" required value="<%= val('email') %>" placeholder="name@example.com">
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label for="first_name">First name</label>
+          <input class="input" id="first_name" name="first_name" value="<%= val('first_name') %>">
+        </div>
+        <div class="field">
+          <label for="last_name">Last name</label>
+          <input class="input" id="last_name" name="last_name" value="<%= val('last_name') %>">
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label for="company">Company</label>
+          <input class="input" id="company" name="company" value="<%= val('company') %>">
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input class="input" id="phone" name="phone" value="<%= val('phone') %>">
+        </div>
+      </div>
+      <div class="field">
+        <label for="status">Status</label>
+        <select class="select" id="status" name="status">
+          <% statuses.forEach(function (s) { %>
+            <option value="<%= s %>" <%= sub && sub.status === s ? 'selected' : (mode === 'create' && s === 'subscribed' ? 'selected' : '') %>><%= s %></option>
+          <% }); %>
+        </select>
+        <div class="hint">Only <strong>subscribed</strong> contacts receive campaigns.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-head">
+      <h2>List membership</h2>
+      <div class="spacer"></div>
+      <a class="small" href="/lists">Manage lists</a>
+    </div>
+    <div class="card-body">
+      <% if (!lists.length) { %>
+        <p class="muted small mb-0">No lists yet. <a href="/lists">Create a list</a> to organise contacts.</p>
+      <% } else { %>
+        <div class="grid grid-3">
+          <% lists.forEach(function (l) { %>
+            <label class="check">
+              <input type="checkbox" name="list_ids" value="<%= l.id %>" <%= selectedLists.indexOf(l.id) !== -1 ? 'checked' : '' %>>
+              <span><%= l.name %></span>
+            </label>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="row mt-3">
+    <button class="btn btn-primary" type="submit"><%= mode === 'create' ? 'Add subscriber' : 'Save changes' %></button>
+    <a class="btn" href="<%= mode === 'create' ? '/contacts' : '/contacts/' + sub.id %>">Cancel</a>
+  </div>
+</form>
+
+<%- include('../partials/shell-bottom') %>
