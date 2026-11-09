@@ -26,7 +26,7 @@ async function connect({ withDatabase }) {
   });
 }
 
-async function main() {
+async function migrate() {
   const schemaPath = path.join(__dirname, 'schema.sql');
   const sql = fs.readFileSync(schemaPath, 'utf8');
 
@@ -56,9 +56,13 @@ async function main() {
   }
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('✗ migration failed:', err.message);
-    process.exit(1);
-  });
+module.exports = { migrate };
+
+if (require.main === module) {
+  migrate()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('✗ migration failed:', err.message);
+      process.exit(1);
+    });
+}

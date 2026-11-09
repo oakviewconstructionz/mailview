@@ -15,6 +15,24 @@ async function start() {
     process.exit(1);
   }
 
+  // Self-provision: apply the schema and seed the admin account on every boot.
+  // Both steps are idempotent, so this is safe on restarts and redeploys and
+  // means a fresh deploy is ready to log into without any manual commands.
+  try {
+    const { migrate } = require('./db/migrate');
+    await migrate();
+  } catch (err) {
+    console.error('✗ migration failed:', err.message);
+    process.exit(1);
+  }
+
+  try {
+    const { seed } = require('./db/seed');
+    await seed();
+  } catch (err) {
+    console.warn('· seed skipped:', err.message);
+  }
+
   const app = createApp();
   const server = app.listen(env.port, () => {
     console.log(`\n  ${env.appName} listening on http://localhost:${env.port}`);

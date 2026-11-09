@@ -10,7 +10,7 @@ const { query, one, pool } = require('../config/db');
  * Safe to run repeatedly — existing records are left untouched.
  */
 
-async function main() {
+async function seed() {
   const email = env.seed.adminEmail.toLowerCase();
   const existing = await one('SELECT id FROM users WHERE email = ?', [email]);
 
@@ -70,12 +70,16 @@ async function main() {
   }
 
   console.log('\nSeed complete.');
-  await pool.end();
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('✗ seed failed:', err.message);
-    process.exit(1);
-  });
+module.exports = { seed };
+
+if (require.main === module) {
+  seed()
+    .then(() => pool.end())
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('✗ seed failed:', err.message);
+      process.exit(1);
+    });
+}
