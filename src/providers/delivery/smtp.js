@@ -21,32 +21,44 @@ class SmtpDeliveryProvider extends BaseDeliveryProvider {
   async config() {
     const host = await settings.get('delivery.smtp.host');
     if (host) {
+      const port = await settings.getInt('delivery.smtp.port', 587);
+      const secureSetting = await settings.getBool('delivery.smtp.secure');
       return {
         host,
-        port: await settings.getInt('delivery.smtp.port', 587),
+        port,
         user: await settings.get('delivery.smtp.user'),
         pass: await settings.get('delivery.smtp.pass'),
-        secure: await settings.getBool('delivery.smtp.secure'),
+        secure: port === 465 ? true : (port === 587 ? false : secureSetting),
         from: await settings.get('delivery.smtp.from'),
         inherited: false,
       };
     }
     // No dedicated relay configured — reuse the mailbox's outgoing SMTP (e.g.
     // Gmail) so campaigns can send through the same account as the Inbox.
+    const imapHost = await settings.get('mailbox.imap.host');
+    let mbHost = await settings.get('mailbox.smtp.host');
+    if (!mbHost && imapHost) {
+      if (imapHost.toLowerCase().includes('gmail')) mbHost = 'smtp.gmail.com';
+      else if (imapHost.toLowerCase().startsWith('imap.')) mbHost = imapHost.replace(/^imap\./i, 'smtp.');
+    }
+    const mbPort = await settings.getInt('mailbox.smtp.port', 465);
+    const mbUser = (await settings.get('mailbox.smtp.user')) || (await settings.get('mailbox.imap.user'));
+    const mbPass = (await settings.get('mailbox.smtp.password')) || (await settings.get('mailbox.imap.password'));
+    const mbSecure = await settings.getBool('mailbox.smtp.secure');
     return {
-      host: await settings.get('mailbox.smtp.host'),
-      port: await settings.getInt('mailbox.smtp.port', 465),
-      user: await settings.get('mailbox.smtp.user'),
-      pass: await settings.get('mailbox.smtp.password'),
-      secure: await settings.getBool('mailbox.smtp.secure'),
-      from: (await settings.get('mailbox.from_email')) || (await settings.get('mailbox.smtp.user')),
+      host: mbHost,
+      port: mbPort,
+      user: mbUser,
+      pass: mbPass,
+      secure: mbPort === 465 ? true : (mbPort === 587 ? false : mbSecure),
+      from: (await settings.get('mailbox.from_email')) || mbUser,
       inherited: true,
     };
   }
 
   async isConfigured() {
     const c = await this.config();
-    return Boolean(c.host && c.from);
+    return Boolean(c.host && (c.from || c.user));
   }
 
   async transporter() {
@@ -57,6 +69,9 @@ class SmtpDeliveryProvider extends BaseDeliveryProvider {
       port: c.port,
       secure: c.secure,
       auth: c.user ? { user: c.user, pass: c.pass } : undefined,
+      tls: {
+        rejectUnauthorized: false,
+      },
       pool: true,
       maxConnections: 5,
       maxMessages: 100,

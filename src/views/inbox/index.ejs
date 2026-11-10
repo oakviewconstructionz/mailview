@@ -21,7 +21,8 @@
     </div>
 
     <% folders.forEach(function (f) { %>
-      <a class="folder-item <%= folder === f.path ? 'active' : '' %>"
+      <% var isCurrent = (folder === f.path) || (f.key && typeof specialKey === 'function' && specialKey(folder) === f.key); %>
+      <a class="folder-item <%= isCurrent ? 'active' : '' %>"
          href="/inbox?folder=<%= encodeURIComponent(f.path) %>">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;">
           <% if (f.key === 'inbox') { %><path d="M3 6.5 5 4h14l2 2.5"/><rect x="3" y="6.5" width="18" height="13" rx="2"/><path d="M3 12h5l1.5 2.5h5L16 12h5"/><% } else { %><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><% } %>

@@ -93,7 +93,15 @@
           <button class="btn btn-primary btn-block" type="submit">Save changes</button>
         </form>
       </div>
-      <div class="card-foot">
+      <div class="card-foot stack" style="gap:8px;">
+        <form method="post" action="/lists/<%= list.id %>/members/remove-all" data-confirm="Remove all <%= pg.total %> members from this list? (Contacts are kept in database)">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-sm btn-ghost btn-block" type="submit" <%= !pg.total ? 'disabled' : '' %>>Remove all members from list</button>
+        </form>
+        <form method="post" action="/lists/<%= list.id %>/members/delete-all" data-confirm="PERMANENTLY DELETE all <%= pg.total %> contacts belonging to this list from the database? This cannot be undone.">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-sm btn-danger btn-block" type="submit" <%= !pg.total ? 'disabled' : '' %>>Delete all contacts in this list</button>
+        </form>
         <form method="post" action="/lists/<%= list.id %>/delete" data-confirm="Delete the list “<%= list.name %>”? Contacts are kept.">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <button class="btn btn-sm btn-danger btn-block" type="submit">Delete list</button>

@@ -1,9 +1,13 @@
 <%
   var moveFolders = (typeof folders !== 'undefined' && folders && folders.length) ? folders : null;
-  var toFirst = {};
-  try { toFirst = JSON.parse(selected.to_json || '[]')[0] || {}; } catch (e) { toFirst = {}; }
-  var toLabel = toFirst.email || toFirst.name || 'you';
-  if (!toFirst.email && !toFirst.name) { toLabel = 'you'; }
+  var toLabel = 'you';
+  try {
+    var toArr = typeof selected.to_json === 'string' ? JSON.parse(selected.to_json || '[]') : (selected.to_json || []);
+    if (Array.isArray(toArr) && toArr.length) {
+      toLabel = toArr.map(function (t) { return t.name ? (t.name + ' <' + t.email + '>') : t.email; }).filter(Boolean).join(', ');
+    }
+  } catch (e) { toLabel = 'you'; }
+  if (!toLabel) { toLabel = 'you'; }
 %>
 <div class="read-head">
   <div class="row between">

@@ -72,8 +72,7 @@ async function buildPanels() {
       checked: spec.type === 'bool' ? isTruthy(values[key]) : false,
       configured: isConfigured,
       source,
-      // A value supplied by the environment and not overridden in the DB is read-only.
-      disabled: source === 'environment' && isConfigured,
+      disabled: false,
     });
   }
 
@@ -136,13 +135,18 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
     for (const key of Object.keys(settings.REGISTRY)) {
       const spec = settings.REGISTRY[key];
 
-      // Environment-managed values are read-only: never overwrite them here.
-      const readOnly = sources[key] === 'environment' && Boolean(configured[key]);
-      if (readOnly) continue;
+      if (req.body[`clear_${key}`]) {
+        // Explicit opt-in to revert DB override to environment default
+        await settings.set(key, '');
+        continue;
+      }
 
       if (spec.type === 'bool') {
-        // Checkbox absent means off; only editable bools reach this point.
-        await settings.set(key, req.body[key] ? 'true' : 'false');
+        if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+          await settings.set(key, req.body[key] ? 'true' : 'false');
+        } else {
+          await settings.set(key, 'false');
+        }
         continue;
       }
 
@@ -152,15 +156,14 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
       if (spec.secret) {
         if (value !== '') {
           await settings.set(key, value);
-        } else if (req.body[`clear_${key}`]) {
-          // Explicit opt-in required to erase a stored secret.
-          await settings.set(key, '');
         }
         continue;
       }
 
-      // Non-secret fields are only persisted when a value is actually supplied.
-      if (value !== '') await settings.set(key, value);
+      // Non-secret fields: persist when supplied
+      if (value !== '') {
+        await settings.set(key, value);
+      }
     }
 
     settings.clearCache();

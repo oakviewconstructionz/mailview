@@ -137,16 +137,21 @@
                   <input class="input" type="text" id="<%= f.key %>" name="<%= f.key %>" value="<%= f.value %>" <%= f.disabled ? 'disabled' : '' %>>
                 <% } %>
 
-                <% if (f.disabled) { %>
-                  <div class="hint">Set by environment variable <span class="mono"><%= f.env %></span> &mdash; read-only here. Clear it in the environment to edit this field.</div>
-                <% } else if (f.secret) { %>
+                <% if (f.source === 'environment' && f.env) { %>
+                  <div class="hint">Default from <span class="mono"><%= f.env %></span>. Enter a value to override.</div>
+                <% } %>
+                <% if (f.secret) { %>
                   <% if (f.configured) { %>
                     <label class="check small muted mt-1">
-                      <input type="checkbox" name="clear_<%= f.key %>" value="1"> Clear the saved value (leave empty to keep it)
+                      <input type="checkbox" name="clear_<%= f.key %>" value="1"> Clear / revert to default (leave empty to keep saved)
                     </label>
                   <% } else { %>
                     <div class="hint">Leave empty to keep the current value.</div>
                   <% } %>
+                <% } else if (f.configured && f.source === 'database') { %>
+                  <label class="check small muted mt-1">
+                    <input type="checkbox" name="clear_<%= f.key %>" value="1"> Revert override to environment default
+                  </label>
                 <% } %>
               </div>
             <% }); %>
@@ -158,7 +163,7 @@
 
   <div class="card">
     <div class="card-body row between">
-      <div class="small muted">Empty secret fields keep their saved value. Values set by the environment are read-only here.</div>
+      <div class="small muted">Values saved here override environment defaults and take effect immediately. Empty secret fields keep their saved value.</div>
       <button class="btn btn-primary" type="submit">Save settings</button>
     </div>
   </div>

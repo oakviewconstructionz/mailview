@@ -9,7 +9,7 @@ const db = require('../../config/db');
 const h = require('../../lib/helpers');
 const { requireAuth, requireCapability } = require('../../middleware/auth');
 const { getMailboxProvider } = require('../../providers/mailbox');
-const { defaultFolders, syncMessages, syncMessage, ACCOUNT } = require('../../services/mailboxSync');
+const { defaultFolders, syncMessages, syncMessage, specialKey, ACCOUNT } = require('../../services/mailboxSync');
 
 const router = express.Router();
 
@@ -42,11 +42,29 @@ function backTo(req, fallback = '/inbox') {
 
 /** Reads the message list for a folder from the local cache, newest first. */
 async function readCachedMessages(folder, q) {
+  const sk = specialKey(folder);
   let sql = `SELECT id, uid, folder, subject, from_name, from_email, snippet,
+                    to_json, cc_json, is_sent,
                     is_read, is_starred, has_attachments, received_at, sent_at, synced_at
                FROM mail_messages
-              WHERE account = ? AND folder = ?`;
-  const params = [ACCOUNT, folder];
+              WHERE account = ?`;
+  const params = [ACCOUNT];
+  if (sk === 'sent') {
+    sql += ' AND (is_sent = 1 OR folder = ? OR folder LIKE ?)';
+    params.push(folder, '%Sent%');
+  } else if (sk === 'inbox') {
+    sql += ' AND (folder = ? OR folder = "INBOX" OR folder = "Inbox")';
+    params.push(folder);
+  } else if (sk === 'drafts') {
+    sql += ' AND (is_draft = 1 OR folder = ? OR folder LIKE ?)';
+    params.push(folder, '%Draft%');
+  } else if (sk === 'trash') {
+    sql += ' AND (folder = ? OR folder LIKE ? OR folder LIKE ?)';
+    params.push(folder, '%Trash%', '%Bin%');
+  } else {
+    sql += ' AND folder = ?';
+    params.push(folder);
+  }
   if (q) {
     sql += ' AND (subject LIKE ? OR from_email LIKE ? OR from_name LIKE ? OR snippet LIKE ?)';
     const like = `%${q}%`;
@@ -94,13 +112,20 @@ router.get('/', requireAuth, async (req, res, next) => {
 
     let messages = await readCachedMessages(folder, q);
 
-    // Empty cache for this folder → attempt a sync, then re-read.
-    if (!messages.length && configured) {
+    // Sync on initial visit to empty folder, or if cache hasn't synced in 60s
+    const lastSyncRow = await db.one(
+      'SELECT MAX(synced_at) AS last_sync FROM mail_messages WHERE account = ?',
+      [ACCOUNT]
+    ).catch(() => null);
+    const lastSyncTime = lastSyncRow && lastSyncRow.last_sync ? new Date(lastSyncRow.last_sync).getTime() : 0;
+    const shouldSync = configured && (!messages.length || (Date.now() - lastSyncTime > 60 * 1000));
+
+    if (shouldSync) {
       try {
         await syncMessages(folder, { limit: 40, search: q || undefined });
         messages = await readCachedMessages(folder, q);
       } catch (err) {
-        error = `Sync failed: ${err.message}`;
+        if (!messages.length) error = `Sync failed: ${err.message}`;
       }
     }
 
@@ -144,6 +169,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       attachments,
       configured,
       error,
+      specialKey,
     });
   } catch (err) {
     next(err);
@@ -589,40 +615,66 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
       return rerender(`Send failed: ${err.message}`);
     }
 
-    // Best-effort: keep a copy in the Sent folder and show it immediately. The
-    // Sent folder is only re-synced when its cache is empty, so without caching
-    // the appended copy here a freshly sent message stays invisible until a
-    // manual Sync.
+    // Find the Sent folder path (from provider if connected, or fallback)
+    let sentFolderPath = 'Sent';
     try {
-      const folders = defaultFolders(await provider.listFolders());
-      const sent = folders.find((f) => f.key === 'sent');
-      if (sent) {
-        const from = typeof provider.smtpConfig === 'function' ? await provider.smtpConfig() : {};
-        const raw = provider.buildRaw({
-          to: validTo.join(', '),
-          cc: ccList.length ? ccList.join(', ') : undefined,
-          subject,
-          text: textFinal,
-          html: htmlFinal,
-          fromName: from.fromName,
-          fromEmail: from.fromEmail || from.user,
-        });
-        const appended = await provider.append(sent.path, raw, ['\\Seen']);
-        const uid = appended && appended.uid ? appended.uid : null;
-        if (uid) {
-          try {
-            await syncMessage(sent.path, uid);
-          } catch (_) { /* the copy is on the server; it appears on the next sync */ }
-        }
-      }
-    } catch (_) { /* non-fatal — the message was still sent */ }
+      const folders = defaultFolders(await provider.listFolders().catch(() => []));
+      const sentF = folders.find((f) => f.key === 'sent');
+      if (sentF) sentFolderPath = sentF.path;
+    } catch (_) {}
+
+    const fromCfg = typeof provider.smtpConfig === 'function' ? await provider.smtpConfig() : {};
+    const fromName = fromCfg.fromName || 'OakView Construction';
+    const fromEmail = fromCfg.fromEmail || fromCfg.user || '';
+    const toObjects = validTo.map((e) => ({ name: '', email: e }));
+    const ccObjects = ccList.map((e) => ({ name: '', email: e }));
+    const bccObjects = bccList.map((e) => ({ name: '', email: e }));
+    const snippetText = h.snippet(textFinal || (htmlFinal ? h.stripTags(htmlFinal) : '') || subject, 160);
+    const messageId = (result && result.messageId) || `<sent-${Date.now()}@oak-viewconstruction.com>`;
+    const localUid = Date.now();
+
+    // Immediately cache the sent message to the database so it appears in the Sent folder
+    try {
+      await db.query(
+        `INSERT INTO mail_messages
+           (account, folder, uid, message_id, in_reply_to, refs, from_name, from_email,
+            to_json, cc_json, bcc_json, subject, snippet, text_body, html_body,
+            has_attachments, is_read, is_starred, is_draft, is_sent,
+            sent_at, received_at, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 1, NOW(), NOW(), NOW())`,
+        [
+          ACCOUNT, sentFolderPath, localUid, messageId, inReplyTo, references,
+          fromName, fromEmail,
+          JSON.stringify(toObjects), JSON.stringify(ccObjects), JSON.stringify(bccObjects),
+          subject, snippetText, textFinal, htmlFinal || null,
+          files.length ? 1 : 0,
+        ]
+      );
+    } catch (dbErr) {
+      console.warn('Could not cache sent message in local db:', dbErr.message);
+    }
+
+    // Best-effort: keep a copy on the server in the Sent folder
+    try {
+      const raw = provider.buildRaw({
+        to: validTo.join(', '),
+        cc: ccList.length ? ccList.join(', ') : undefined,
+        subject,
+        text: textFinal,
+        html: htmlFinal,
+        fromName,
+        fromEmail,
+      });
+      await provider.append(sentFolderPath, raw, ['\\Seen']);
+    } catch (_) { /* non-fatal — the message was already sent and cached */ }
 
     const sentMessage = `Message sent${result && result.messageId ? ` (${result.messageId})` : ''}.`;
     req.flash('success', sentMessage);
+    const sentRedirect = `/inbox?folder=${encodeURIComponent(sentFolderPath)}`;
     if ((req.get('X-Requested-With') || '') === 'XMLHttpRequest') {
-      return res.json({ ok: true, message: sentMessage, redirect: '/inbox' });
+      return res.json({ ok: true, message: sentMessage, redirect: sentRedirect });
     }
-    return res.redirect('/inbox');
+    return res.redirect(sentRedirect);
   } catch (err) {
     return next(err);
   }

@@ -25,6 +25,17 @@
       <%
         var link = '/inbox?folder=' + encodeURIComponent(folder) + '&message=' + m.id + (q ? '&q=' + encodeURIComponent(q) : '');
         var isActive = (selected && selected.id === m.id);
+        var senderOrRecipient = m.from_name || m.from_email || '(unknown sender)';
+        var isSentView = Boolean(m.is_sent || (typeof folder === 'string' && folder.toLowerCase().indexOf('sent') !== -1));
+        if (isSentView && m.to_json) {
+          try {
+            var toArr = typeof m.to_json === 'string' ? JSON.parse(m.to_json) : m.to_json;
+            if (Array.isArray(toArr) && toArr.length) {
+              var names = toArr.map(function(t) { return t.name || t.email; }).filter(Boolean).join(', ');
+              if (names) senderOrRecipient = 'To: ' + names;
+            }
+          } catch (_) {}
+        }
       %>
       <div class="msg-item <%= m.is_read ? '' : 'unread' %> <%= isActive ? 'active' : '' %>">
         <label class="msg-pick" title="Select message">
@@ -32,7 +43,7 @@
         </label>
         <a class="msg-row" href="<%= link %>">
           <div class="row between">
-            <span class="msg-from"><%= m.from_name || m.from_email || '(unknown sender)' %></span>
+            <span class="msg-from"><%= senderOrRecipient %></span>
             <span class="msg-meta"><%= h.timeAgo(m.received_at || m.sent_at || m.synced_at) %></span>
           </div>
           <div class="msg-subject"><%= m.subject || '(no subject)' %></div>

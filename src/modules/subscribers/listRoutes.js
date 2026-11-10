@@ -357,4 +357,39 @@ router.post('/:id/members/remove', requireAuth, requireCapability('edit'), async
   }
 });
 
+router.post('/:id/members/remove-all', requireAuth, requireCapability('edit'), async (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return next();
+  try {
+    const result = await db.query('DELETE FROM list_subscribers WHERE list_id = ?', [id]);
+    req.flash('success', `Removed ${result.affectedRows || 0} contact(s) from the list.`);
+    return res.redirect(`/lists/${id}`);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.post('/:id/members/delete-all', requireAuth, requireCapability('edit'), async (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return next();
+  try {
+    const rows = await db.query('SELECT subscriber_id FROM list_subscribers WHERE list_id = ?', [id]);
+    if (rows.length) {
+      const subIds = rows.map((r) => r.subscriber_id);
+      const CHUNK = 500;
+      for (let i = 0; i < subIds.length; i += CHUNK) {
+        const chunk = subIds.slice(i, i + CHUNK);
+        const inList = chunk.map(() => '?').join(',');
+        await db.query(`DELETE FROM subscribers WHERE id IN (${inList})`, chunk);
+      }
+      req.flash('success', `Permanently deleted all ${subIds.length} contact(s) in this list.`);
+    } else {
+      req.flash('info', 'No contacts in this list to delete.');
+    }
+    return res.redirect(`/lists/${id}`);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;

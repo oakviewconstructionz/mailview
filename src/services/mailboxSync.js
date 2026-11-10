@@ -27,9 +27,10 @@ const ATTACH_ROOT = path.join(REPO_ROOT, 'storage', 'attachments');
 
 const SPECIAL_ORDER = ['inbox', 'sent', 'drafts', 'archive', 'junk', 'trash'];
 
-/** Maps a provider folder to a normalised key (or null for ordinary folders). */
+/** Maps a provider folder to a normalised key (or null for ordinary folders). Accepts object or string path. */
 function specialKey(folder) {
-  const su = String(folder.specialUse || '').toLowerCase();
+  if (!folder) return null;
+  const su = typeof folder === 'object' ? String(folder.specialUse || '').toLowerCase() : '';
   if (su) {
     if (su.includes('inbox')) return 'inbox';
     if (su.includes('sent')) return 'sent';
@@ -38,11 +39,11 @@ function specialKey(folder) {
     if (su.includes('junk') || su.includes('spam')) return 'junk';
     if (su.includes('all') || su.includes('archive')) return 'archive';
   }
-  const n = String(folder.name || folder.path || '').toLowerCase().trim();
-  if (n === 'inbox') return 'inbox';
+  const n = (typeof folder === 'string' ? folder : String(folder.name || folder.path || '')).toLowerCase().trim();
+  if (n === 'inbox' || n.includes('inbox')) return 'inbox';
   if (n.includes('sent')) return 'sent';
   if (n.includes('draft')) return 'drafts';
-  if (n.includes('trash') || n.includes('deleted')) return 'trash';
+  if (n.includes('trash') || n.includes('deleted') || n.includes('bin')) return 'trash';
   if (n.includes('junk') || n.includes('spam')) return 'junk';
   if (n.includes('archive') || n.includes('all mail')) return 'archive';
   return null;
@@ -251,13 +252,7 @@ async function syncMessages(folder = 'INBOX', { limit = 40, search } = {}) {
 
   let synced = 0;
   for (const env of envelopes) {
-    let full = null;
-    try {
-      full = await provider.fetchFull(folder, env.uid);
-    } catch (_) {
-      full = null; // keep the envelope data even if the body fails
-    }
-    await upsertMessage(folder, env, full);
+    await upsertMessage(folder, env, null);
     synced += 1;
   }
 

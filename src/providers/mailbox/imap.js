@@ -33,20 +33,33 @@ class ImapMailboxProvider {
   }
 
   async smtpConfig() {
+    let host = (await settings.get('mailbox.smtp.host')) || (await settings.get('delivery.smtp.host'));
+    const imapHost = await settings.get('mailbox.imap.host');
+    if (!host && imapHost) {
+      if (imapHost.toLowerCase().includes('gmail')) host = 'smtp.gmail.com';
+      else if (imapHost.toLowerCase().startsWith('imap.')) host = imapHost.replace(/^imap\./i, 'smtp.');
+    }
+    const user = (await settings.get('mailbox.smtp.user')) || (await settings.get('mailbox.imap.user')) || (await settings.get('delivery.smtp.user'));
+    const pass = (await settings.get('mailbox.smtp.password')) || (await settings.get('mailbox.imap.password')) || (await settings.get('delivery.smtp.pass'));
+    const port = (await settings.getInt('mailbox.smtp.port', 0)) || (await settings.getInt('delivery.smtp.port', 0)) || 465;
+    const secureSetting = await settings.getBool('mailbox.smtp.secure');
+    const secure = port === 465 ? true : (port === 587 ? false : secureSetting);
+
     return {
-      host: await settings.get('mailbox.smtp.host'),
-      port: await settings.getInt('mailbox.smtp.port', 465),
-      secure: await settings.getBool('mailbox.smtp.secure'),
-      user: await settings.get('mailbox.smtp.user'),
-      pass: await settings.get('mailbox.smtp.password'),
-      fromName: (await settings.get('mailbox.from_name')) || 'OakView',
-      fromEmail: await settings.get('mailbox.from_email'),
+      host: host || '',
+      port,
+      secure,
+      user: user || '',
+      pass: pass || '',
+      fromName: (await settings.get('mailbox.from_name')) || 'OakView Construction',
+      fromEmail: (await settings.get('mailbox.from_email')) || (await settings.get('delivery.smtp.from')) || user || '',
     };
   }
 
   async isConfigured() {
     const imap = await this.imapConfig();
-    return Boolean(imap.host && imap.user && imap.pass);
+    const smtp = await this.smtpConfig();
+    return Boolean((imap.host && imap.user && imap.pass) || (smtp.host && (smtp.fromEmail || smtp.user)));
   }
 
   async verify() {
@@ -103,6 +116,9 @@ class ImapMailboxProvider {
       secure: cfg.secure,
       auth: { user: cfg.user, pass: cfg.pass },
       logger: false,
+      tls: {
+        rejectUnauthorized: false,
+      },
       // Gmail keeps IMAP connections alive; a generous timeout avoids flakiness.
       greetingTimeout: 15000,
       socketTimeout: 60000,
@@ -113,6 +129,47 @@ class ImapMailboxProvider {
     } finally {
       try { await client.logout(); } catch (_) { /* ignore */ }
     }
+  }
+
+  /** Resolves a folder name/alias (e.g. "Sent") to the server's real folder path (e.g. "[Gmail]/Sent Mail"). */
+  async resolveFolderPath(client, requestedFolder) {
+    if (!requestedFolder) return 'INBOX';
+    if (requestedFolder.toUpperCase() === 'INBOX') return 'INBOX';
+
+    try {
+      const boxes = await client.list();
+      const exact = boxes.find((b) => b.path === requestedFolder);
+      if (exact) return exact.path;
+
+      const reqLower = requestedFolder.toLowerCase().trim();
+      const caseMatch = boxes.find((b) => b.path.toLowerCase() === reqLower || (b.name && b.name.toLowerCase() === reqLower));
+      if (caseMatch) return caseMatch.path;
+
+      if (reqLower.includes('sent')) {
+        const match = boxes.find((b) => (b.specialUse && b.specialUse.toLowerCase().includes('sent')) || b.path.toLowerCase().includes('sent') || (b.name && b.name.toLowerCase().includes('sent')));
+        if (match) return match.path;
+      }
+      if (reqLower.includes('draft')) {
+        const match = boxes.find((b) => (b.specialUse && b.specialUse.toLowerCase().includes('draft')) || b.path.toLowerCase().includes('draft') || (b.name && b.name.toLowerCase().includes('draft')));
+        if (match) return match.path;
+      }
+      if (reqLower.includes('trash') || reqLower.includes('bin') || reqLower.includes('deleted')) {
+        const match = boxes.find((b) => (b.specialUse && (b.specialUse.toLowerCase().includes('trash') || b.specialUse.toLowerCase().includes('delete'))) || b.path.toLowerCase().includes('trash') || b.path.toLowerCase().includes('bin'));
+        if (match) return match.path;
+      }
+      if (reqLower.includes('junk') || reqLower.includes('spam')) {
+        const match = boxes.find((b) => (b.specialUse && (b.specialUse.toLowerCase().includes('junk') || b.specialUse.toLowerCase().includes('spam'))) || b.path.toLowerCase().includes('spam') || b.path.toLowerCase().includes('junk'));
+        if (match) return match.path;
+      }
+      if (reqLower.includes('archive') || reqLower.includes('all')) {
+        const match = boxes.find((b) => (b.specialUse && (b.specialUse.toLowerCase().includes('all') || b.specialUse.toLowerCase().includes('archive'))) || b.path.toLowerCase().includes('all') || b.path.toLowerCase().includes('archive'));
+        if (match) return match.path;
+      }
+    } catch (_) {
+      // If list fails, fallback to requestedFolder
+    }
+
+    return requestedFolder;
   }
 
   async listFolders() {
@@ -128,9 +185,10 @@ class ImapMailboxProvider {
   }
 
   async withMailbox(client, folder, fn) {
-    const lock = await client.getMailboxLock(folder);
+    const realFolder = await this.resolveFolderPath(client, folder);
+    const lock = await client.getMailboxLock(realFolder);
     try {
-      return await fn();
+      return await fn(realFolder);
     } finally {
       lock.release();
     }
@@ -144,7 +202,11 @@ class ImapMailboxProvider {
   /** Newest-first envelope list for the inbox UI. */
   async fetchEnvelopes(folder, { limit = 40, search } = {}) {
     return this.withClient(async (client) =>
-      this.withMailbox(client, folder, async () => {
+      this.withMailbox(client, folder, async (realFolder) => {
+        if (!client.mailbox || client.mailbox.exists === 0) {
+          return [];
+        }
+
         let range = `${Math.max(1, client.mailbox.exists - limit + 1)}:*`;
         let query;
         if (search) {
@@ -329,7 +391,8 @@ class ImapMailboxProvider {
   /** Appends a raw RFC822 message to a folder (used to store Sent / Drafts). */
   async append(folder, raw, flags = []) {
     return this.withClient(async (client) => {
-      const res = await client.append(folder, raw, flags, new Date());
+      const realFolder = await this.resolveFolderPath(client, folder);
+      const res = await client.append(realFolder, raw, flags, new Date());
       return res;
     });
   }
@@ -342,6 +405,9 @@ class ImapMailboxProvider {
       port: cfg.port,
       secure: cfg.secure,
       auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+      tls: {
+        rejectUnauthorized: false,
+      },
     });
   }
 

@@ -22,7 +22,10 @@ function csrfProtection(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return next();
   if (EXEMPT_PREFIXES.some((p) => req.path.startsWith(p))) return next();
 
-  const sent = (req.body && (req.body._csrf || req.body.csrf_token)) || req.headers['x-csrf-token'];
+  const sent =
+    (req.body && (req.body._csrf || req.body.csrf_token)) ||
+    req.headers['x-csrf-token'] ||
+    (req.query && (req.query._csrf || req.query.csrf_token));
   if (sent && timingSafeEqual(sent, req.session.csrfToken)) return next();
 
   const err = new Error('Invalid or missing CSRF token. Please reload the page and try again.');

@@ -36,8 +36,13 @@ async function activeName() {
 }
 
 async function getDeliveryProvider(nameOverride) {
-  const name = nameOverride || (await activeName());
-  return PROVIDERS[name] || sender;
+  if (nameOverride && PROVIDERS[nameOverride]) {
+    if (await PROVIDERS[nameOverride].isConfigured()) {
+      return PROVIDERS[nameOverride];
+    }
+  }
+  const name = await activeName();
+  return PROVIDERS[name] || PROVIDERS.smtp || sender;
 }
 
 /** Human label used only inside admin settings (never the client UI). */

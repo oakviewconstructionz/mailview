@@ -162,6 +162,9 @@ function mapColumns(rows) {
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
+    const perPage = [25, 50, 100, 250, 500].includes(parseInt(req.query.per_page, 10))
+      ? parseInt(req.query.per_page, 10)
+      : PER_PAGE;
     const { whereSql, params } = buildFilters(req.query);
 
     const [counts, suppressed, lists, totalRow] = await Promise.all([
@@ -176,7 +179,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       db.one(`SELECT COUNT(*) AS c FROM subscribers s ${whereSql}`, params),
     ]);
 
-    const pg = h.paginate(totalRow ? totalRow.c : 0, page, PER_PAGE);
+    const pg = h.paginate(totalRow ? totalRow.c : 0, page, perPage);
 
     const rows = await db.query(
       `SELECT s.*,
@@ -201,6 +204,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       suppressed: suppressed ? suppressed.c : 0,
       exportQuery: filterQueryString(req.query),
       statuses: SUBSCRIBER_STATUSES,
+      perPage,
     });
   } catch (err) {
     return next(err);
@@ -447,31 +451,77 @@ router.get('/export', requireAuth, async (req, res, next) => {
 router.post('/bulk', requireAuth, requireCapability('edit'), async (req, res, next) => {
   const ids = toIntArray(req.body.ids);
   const action = str(req.body.action);
-  if (!ids.length) {
-    req.flash('error', 'Select at least one contact first.');
+  const allMatching = req.body.all_matching === '1' || action === 'delete_all' || action === 'suppress_all';
+
+  if (!ids.length && !allMatching) {
+    req.flash('error', 'Select at least one contact first, or choose an "all matching" action.');
     return res.redirect('/contacts');
   }
 
-  const inList = ids.map(() => '?').join(',');
   try {
-    if (action === 'delete') {
-      await db.query(`DELETE FROM subscribers WHERE id IN (${inList})`, ids);
-      req.flash('success', `Deleted ${ids.length} contact(s).`);
-    } else if (action === 'suppress') {
-      const rows = await db.query(`SELECT email FROM subscribers WHERE id IN (${inList})`, ids);
-      if (rows.length) {
-        const params = [];
-        rows.forEach((r) => params.push(r.email, 'manual', 'bulk action'));
-        await db.query(
-          `INSERT INTO suppressions (email, reason, detail) VALUES ${new Array(rows.length).fill('(?, ?, ?)').join(',')}
-           ON DUPLICATE KEY UPDATE reason = reason`,
-          params
-        );
+    if (allMatching) {
+      // Resolve all matching contacts across the entire database matching current view/filters
+      const { whereSql, params } = buildFilters(req.body);
+      const rows = await db.query(
+        `SELECT s.id, s.email FROM subscribers s ${whereSql}`,
+        params
+      );
+
+      if (!rows.length) {
+        req.flash('info', 'No matching contacts found to process.');
+        return res.redirect('/contacts');
       }
-      await db.query(`UPDATE subscribers SET status = 'unsubscribed' WHERE id IN (${inList})`, ids);
-      req.flash('success', `Suppressed ${ids.length} contact(s).`);
+
+      const matchIds = rows.map((r) => r.id);
+      const CHUNK = 500;
+
+      if (action === 'delete' || action === 'delete_all') {
+        for (let i = 0; i < matchIds.length; i += CHUNK) {
+          const chunk = matchIds.slice(i, i + CHUNK);
+          const inList = chunk.map(() => '?').join(',');
+          await db.query(`DELETE FROM subscribers WHERE id IN (${inList})`, chunk);
+        }
+        req.flash('success', `Deleted all ${matchIds.length} contact(s).`);
+      } else if (action === 'suppress' || action === 'suppress_all') {
+        for (let i = 0; i < rows.length; i += CHUNK) {
+          const chunk = rows.slice(i, i + CHUNK);
+          const suppParams = [];
+          chunk.forEach((r) => suppParams.push(r.email, 'manual', 'bulk action'));
+          await db.query(
+            `INSERT INTO suppressions (email, reason, detail) VALUES ${new Array(chunk.length).fill('(?, ?, ?)').join(',')}
+             ON DUPLICATE KEY UPDATE reason = reason`,
+            suppParams
+          );
+          const chunkIds = chunk.map((r) => r.id);
+          const inList = chunkIds.map(() => '?').join(',');
+          await db.query(`UPDATE subscribers SET status = 'unsubscribed' WHERE id IN (${inList})`, chunkIds);
+        }
+        req.flash('success', `Suppressed all ${rows.length} contact(s).`);
+      } else {
+        req.flash('error', 'Choose a valid bulk action.');
+      }
     } else {
-      req.flash('error', 'Choose a bulk action.');
+      // Process selected IDs from the current page
+      const inList = ids.map(() => '?').join(',');
+      if (action === 'delete') {
+        await db.query(`DELETE FROM subscribers WHERE id IN (${inList})`, ids);
+        req.flash('success', `Deleted ${ids.length} contact(s).`);
+      } else if (action === 'suppress') {
+        const rows = await db.query(`SELECT email FROM subscribers WHERE id IN (${inList})`, ids);
+        if (rows.length) {
+          const params = [];
+          rows.forEach((r) => params.push(r.email, 'manual', 'bulk action'));
+          await db.query(
+            `INSERT INTO suppressions (email, reason, detail) VALUES ${new Array(rows.length).fill('(?, ?, ?)').join(',')}
+             ON DUPLICATE KEY UPDATE reason = reason`,
+            params
+          );
+        }
+        await db.query(`UPDATE subscribers SET status = 'unsubscribed' WHERE id IN (${inList})`, ids);
+        req.flash('success', `Suppressed ${ids.length} contact(s).`);
+      } else {
+        req.flash('error', 'Choose a bulk action.');
+      }
     }
     return res.redirect('/contacts');
   } catch (err) {

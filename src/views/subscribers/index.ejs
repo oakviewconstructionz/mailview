@@ -11,6 +11,7 @@
     if (q) parts.push('q=' + encodeURIComponent(q));
     if (status) parts.push('status=' + encodeURIComponent(status));
     if (listId) parts.push('list_id=' + listId);
+    if (typeof perPage !== 'undefined' && perPage !== 25) parts.push('per_page=' + perPage);
     parts.push('page=' + p);
     return '/contacts?' + parts.join('&');
   };
@@ -74,6 +75,13 @@
       <option value="<%= l.id %>" <%= listId === l.id ? 'selected' : '' %>><%= l.name %></option>
     <% }); %>
   </select>
+  <select class="select" name="per_page" style="width:auto;" onchange="this.form.submit()">
+    <option value="25" <%= (typeof perPage !== 'undefined' && perPage === 25) ? 'selected' : '' %>>25 per page</option>
+    <option value="50" <%= (typeof perPage !== 'undefined' && perPage === 50) ? 'selected' : '' %>>50 per page</option>
+    <option value="100" <%= (typeof perPage !== 'undefined' && perPage === 100) ? 'selected' : '' %>>100 per page</option>
+    <option value="250" <%= (typeof perPage !== 'undefined' && perPage === 250) ? 'selected' : '' %>>250 per page</option>
+    <option value="500" <%= (typeof perPage !== 'undefined' && perPage === 500) ? 'selected' : '' %>>500 per page</option>
+  </select>
   <button class="btn" type="submit">Filter</button>
   <% if (q || status || listId) { %><a class="btn btn-ghost" href="/contacts">Clear</a><% } %>
 </form>
@@ -88,19 +96,39 @@
     }) %>
   </div>
 <% } else { %>
-  <form method="post" action="/contacts/bulk">
+  <form id="bulkContactsForm" method="post" action="/contacts/bulk">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="all_matching" id="allMatchingInput" value="0">
+    <input type="hidden" name="q" value="<%= q %>">
+    <input type="hidden" name="status" value="<%= status %>">
+    <input type="hidden" name="list_id" value="<%= listId %>">
+
     <div class="card">
       <div class="card-head">
         <h2>Contacts</h2>
         <div class="spacer"></div>
         <span class="badge"><%= h.formatNumber(pg.total) %> matching</span>
       </div>
+
+      <div id="selectionBanner" style="display:none;padding:10px 16px;background:var(--accent-subtle,#e8f0fe);border-bottom:1px solid var(--line);font-size:13px;text-align:center;">
+        <span id="selectionText">All <%= rows.length %> contacts on this page are selected.</span>
+        <% if (pg.total > rows.length) { %>
+          <button type="button" class="btn btn-sm btn-ghost" id="selectAllMatchingBtn" style="margin-left:8px;font-weight:600;text-decoration:underline;cursor:pointer;">
+            Select all <%= h.formatNumber(pg.total) %> contacts matching this view
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost" id="clearSelectionBtn" style="margin-left:8px;display:none;cursor:pointer;">
+            Clear selection
+          </button>
+        <% } %>
+      </div>
+
       <div class="table-wrap">
         <table class="data">
           <thead>
             <tr>
-              <th style="width:34px;"><input type="checkbox" title="Select all" onclick="var t=this.closest('table');t.querySelectorAll('input[name=ids]').forEach(function(c){c.checked=this.checked;},this);"></th>
+              <th style="width:34px;">
+                <input type="checkbox" id="masterCheckbox" title="Select all on this page">
+              </th>
               <th>Subscriber</th>
               <th>Status</th>
               <th class="num">Lists</th>
@@ -112,7 +140,7 @@
           <tbody>
             <% rows.forEach(function (s) { %>
             <tr>
-              <td><input type="checkbox" name="ids" value="<%= s.id %>"></td>
+              <td><input type="checkbox" name="ids" value="<%= s.id %>" class="row-checkbox"></td>
               <td>
                 <a class="row-link" href="/contacts/<%= s.id %>"><%= s.email %></a>
                 <div class="small muted truncate" style="max-width:320px;">
@@ -133,17 +161,133 @@
       </div>
       <div class="card-foot row between">
         <div class="row" style="gap:8px;">
-          <select class="select" name="action" style="width:auto;">
+          <select class="select" name="action" id="bulkActionSelect" style="width:auto;">
             <option value="">Bulk action…</option>
             <option value="delete">Delete selected</option>
+            <% if (pg.total > 0) { %>
+              <option value="delete_all">Delete all <%= h.formatNumber(pg.total) %> contacts matching this view</option>
+            <% } %>
             <option value="suppress">Suppress selected</option>
+            <% if (pg.total > 0) { %>
+              <option value="suppress_all">Suppress all <%= h.formatNumber(pg.total) %> contacts matching this view</option>
+            <% } %>
           </select>
-          <button class="btn btn-sm" type="submit" data-confirm="Apply this action to the selected contacts?">Apply</button>
+          <button class="btn btn-sm" type="submit" id="applyBulkBtn">Apply</button>
         </div>
-        <span class="small muted">Tick rows above, then apply.</span>
+        <span class="small muted" id="selectedCountMsg">Tick rows above, or choose an "all matching" action.</span>
       </div>
     </div>
   </form>
+
+  <script>
+  (function () {
+    var master = document.getElementById('masterCheckbox');
+    var rowChecks = document.querySelectorAll('.row-checkbox');
+    var banner = document.getElementById('selectionBanner');
+    var selectionText = document.getElementById('selectionText');
+    var selectAllMatchingBtn = document.getElementById('selectAllMatchingBtn');
+    var clearSelectionBtn = document.getElementById('clearSelectionBtn');
+    var allMatchingInput = document.getElementById('allMatchingInput');
+    var actionSelect = document.getElementById('bulkActionSelect');
+    var form = document.getElementById('bulkContactsForm');
+    var selectedCountMsg = document.getElementById('selectedCountMsg');
+    var totalMatching = <%= pg.total %>;
+
+    function updateCount() {
+      if (allMatchingInput.value === '1') {
+        if (selectedCountMsg) selectedCountMsg.textContent = 'All ' + totalMatching.toLocaleString() + ' matching contacts selected.';
+        return;
+      }
+      var checked = document.querySelectorAll('.row-checkbox:checked').length;
+      if (selectedCountMsg) {
+        selectedCountMsg.textContent = checked ? (checked + ' contact' + (checked === 1 ? '' : 's') + ' selected on this page.') : 'Tick rows above, or choose an "all matching" action.';
+      }
+    }
+
+    if (master) {
+      master.addEventListener('change', function () {
+        var isChecked = master.checked;
+        allMatchingInput.value = '0';
+        rowChecks.forEach(function (c) { c.checked = isChecked; });
+        if (isChecked && banner) {
+          banner.style.display = '';
+          selectionText.textContent = 'All ' + rowChecks.length + ' contacts on this page are selected.';
+          if (selectAllMatchingBtn) selectAllMatchingBtn.style.display = '';
+          if (clearSelectionBtn) clearSelectionBtn.style.display = 'none';
+        } else if (banner) {
+          banner.style.display = 'none';
+        }
+        updateCount();
+      });
+    }
+
+    rowChecks.forEach(function (c) {
+      c.addEventListener('change', function () {
+        allMatchingInput.value = '0';
+        if (banner) banner.style.display = 'none';
+        if (master) {
+          master.checked = (document.querySelectorAll('.row-checkbox:checked').length === rowChecks.length);
+        }
+        updateCount();
+      });
+    });
+
+    if (selectAllMatchingBtn) {
+      selectAllMatchingBtn.addEventListener('click', function () {
+        allMatchingInput.value = '1';
+        selectionText.textContent = 'All ' + totalMatching.toLocaleString() + ' contacts matching this view are selected.';
+        selectAllMatchingBtn.style.display = 'none';
+        if (clearSelectionBtn) clearSelectionBtn.style.display = '';
+        updateCount();
+      });
+    }
+
+    if (clearSelectionBtn) {
+      clearSelectionBtn.addEventListener('click', function () {
+        allMatchingInput.value = '0';
+        if (master) master.checked = false;
+        rowChecks.forEach(function (c) { c.checked = false; });
+        if (banner) banner.style.display = 'none';
+        updateCount();
+      });
+    }
+
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        var action = actionSelect ? actionSelect.value : '';
+        if (!action) {
+          e.preventDefault();
+          alert('Please choose a bulk action first.');
+          return;
+        }
+
+        var isAll = (allMatchingInput.value === '1' || action === 'delete_all' || action === 'suppress_all');
+        var checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
+
+        if (!isAll && !checkedCount) {
+          e.preventDefault();
+          alert('Please select at least one contact checkbox, or choose an "all matching" action.');
+          return;
+        }
+
+        var msg = '';
+        if (action === 'delete_all' || (action === 'delete' && isAll)) {
+          msg = 'Are you sure you want to PERMANENTLY DELETE ALL ' + totalMatching.toLocaleString() + ' matching contact(s)? This action cannot be undone.';
+        } else if (action === 'delete') {
+          msg = 'Are you sure you want to delete the ' + checkedCount + ' selected contact(s)?';
+        } else if (action === 'suppress_all' || (action === 'suppress' && isAll)) {
+          msg = 'Suppress all ' + totalMatching.toLocaleString() + ' matching contact(s)? They will never receive campaign emails.';
+        } else if (action === 'suppress') {
+          msg = 'Suppress the ' + checkedCount + ' selected contact(s)?';
+        }
+
+        if (msg && !confirm(msg)) {
+          e.preventDefault();
+        }
+      });
+    }
+  })();
+  </script>
 
   <% if (pg.totalPages > 1) { %>
     <div class="row between mt-3">
