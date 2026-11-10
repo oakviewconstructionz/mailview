@@ -87,20 +87,18 @@ function isValidEmail(email) {
 
 function parseEmailList(input) {
   if (!input) return [];
-  const items = String(input)
+  const text = String(input)
     .replace(/@\.com\b/gi, '@gmail.com')
-    .replace(/@com\b/gi, '@gmail.com')
-    .split(/[,;\n]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+    .replace(/@com\b/gi, '@gmail.com');
 
+  const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
   const valid = [];
-  for (const item of items) {
-    const match = item.match(/<([^>]+)>/);
-    const candidate = match ? match[1].trim() : item;
-    const direct = candidate.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (direct && isValidEmail(direct[0])) {
-      valid.push(direct[0].toLowerCase());
+  const seen = new Set();
+  for (const m of matches) {
+    const clean = m.trim().toLowerCase();
+    if (isValidEmail(clean) && !seen.has(clean)) {
+      seen.add(clean);
+      valid.push(clean);
     }
   }
   return valid;
