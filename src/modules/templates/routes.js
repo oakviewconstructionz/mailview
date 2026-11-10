@@ -199,4 +199,22 @@ router.get('/:id/preview', async (req, res, next) => {
   }
 });
 
+/* ---------------------------------------------------------- content (json) */
+
+// Lightweight JSON feed used by the inbox composer to prefill a message.
+router.get('/:id/data', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(404).json({ error: 'Template not found.' });
+  try {
+    const template = await db.one(
+      'SELECT id, name, subject, preheader, html, text FROM templates WHERE id = ?',
+      [id]
+    );
+    if (!template) return res.status(404).json({ error: 'Template not found.' });
+    return res.json(template);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;

@@ -98,6 +98,9 @@
         <div class="card">
           <div class="card-head"><h2><%= group.title %></h2></div>
           <div class="card-body">
+            <% if (group.hint) { %>
+              <p class="small muted" style="margin-top:0;"><%= group.hint %></p>
+            <% } %>
             <% if (!group.fields.length) { %>
               <p class="small muted mb-0">No settings in this group.</p>
             <% } %>

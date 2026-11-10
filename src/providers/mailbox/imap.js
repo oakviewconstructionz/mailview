@@ -50,6 +50,9 @@ class ImapMailboxProvider {
   }
 
   async verify() {
+    const checks = [];
+
+    // Incoming mail — required.
     try {
       const cfg = await this.imapConfig();
       const client = new ImapFlow({
@@ -62,10 +65,31 @@ class ImapMailboxProvider {
       await client.connect();
       const boxes = await client.list();
       await client.logout();
-      return { ok: true, message: `Mailbox connected. ${boxes.length} folder(s) available.` };
+      checks.push({ label: 'IMAP', ok: true, required: true, message: `${boxes.length} folder(s) available.` });
     } catch (err) {
-      return { ok: false, message: err.message };
+      checks.push({ label: 'IMAP', ok: false, required: true, message: err.message });
     }
+
+    // Outgoing mail — checked only when an SMTP host is configured.
+    const smtp = await this.smtpConfig();
+    if (smtp.host) {
+      try {
+        const transport = await this.smtpTransport();
+        await transport.verify();
+        checks.push({ label: 'SMTP', ok: true, required: true, message: `${smtp.host}:${smtp.port} accepted the connection.` });
+      } catch (err) {
+        checks.push({ label: 'SMTP', ok: false, required: true, message: err.message });
+      }
+    } else {
+      checks.push({ label: 'SMTP', ok: false, required: false, message: 'Not configured — outgoing mail cannot be sent yet.' });
+    }
+
+    const ok = checks.filter((c) => c.required && !c.ok).length === 0;
+    const message = ok
+      ? (smtp.host ? 'IMAP and SMTP connections verified.' : 'IMAP verified. Outgoing SMTP is not configured yet.')
+      : checks.filter((c) => !c.ok).map((c) => `${c.label} failed: ${c.message}`).join(' · ');
+
+    return { ok, message, checks };
   }
 
   /** Opens an IMAP connection, runs `fn`, always logs out. */

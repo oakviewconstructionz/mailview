@@ -31,6 +31,12 @@ const GROUP_TITLES = {
   mailbox_identity: 'Sender identity',
 };
 
+const GROUP_HINTS = {
+  imap: 'Where incoming mail is read from.',
+  mailbox_smtp: 'Where outgoing mail is sent from. This can be a different server from the IMAP above — e.g. read via your domain’s IMAP and send via Gmail SMTP (smtp.gmail.com, port 465, with a Google App Password).',
+  mailbox_identity: 'Shown as the sender name and From address on messages you send.',
+};
+
 const TRUTHY = ['1', 'true', 'yes', 'on'];
 
 function isTruthy(value) {
@@ -71,7 +77,7 @@ async function buildPanels() {
     });
   }
 
-  const groups = (keys) => keys.map((g) => ({ key: g, title: GROUP_TITLES[g], fields: byGroup[g] || [] }));
+  const groups = (keys) => keys.map((g) => ({ key: g, title: GROUP_TITLES[g], hint: GROUP_HINTS[g] || '', fields: byGroup[g] || [] }));
 
   return [
     {

@@ -56,6 +56,15 @@ function quoteOriginal(msg) {
   return `\n\n---------- Original message ----------\nFrom: ${msg.from_name || ''} <${msg.from_email || ''}>\nDate: ${h.formatDateTime(when)}\nSubject: ${msg.subject || ''}\n\n${body || ''}`;
 }
 
+/** Templates + lists used to prefill the composer. */
+async function composeOptions() {
+  const [templates, lists] = await Promise.all([
+    db.query('SELECT id, name, subject FROM templates ORDER BY updated_at DESC'),
+    db.query('SELECT id, name FROM lists ORDER BY name ASC'),
+  ]);
+  return { templates, lists };
+}
+
 /* ------------------------------------------------------------------ main view */
 
 router.get('/', requireAuth, async (req, res, next) => {
@@ -338,6 +347,38 @@ router.get('/attachment/:id', requireAuth, async (req, res, next) => {
 
 /* ------------------------------------------------------------------ compose */
 
+// Contact lookup powering the composer's bulk recipient picker.
+router.get('/recipients', requireAuth, async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const listId = parseInt(req.query.list_id, 10) || 0;
+
+    const where = ["s.status <> 'unsubscribed'"];
+    const params = [];
+    if (q) {
+      where.push('(s.email LIKE ? OR s.first_name LIKE ? OR s.last_name LIKE ? OR s.company LIKE ?)');
+      const like = `%${q}%`;
+      params.push(like, like, like, like);
+    }
+    if (listId) {
+      where.push('EXISTS (SELECT 1 FROM list_subscribers ls WHERE ls.subscriber_id = s.id AND ls.list_id = ?)');
+      params.push(listId);
+    }
+
+    const contacts = await db.query(
+      `SELECT s.id, s.email, s.first_name, s.last_name, s.company, s.status
+         FROM subscribers s
+        WHERE ${where.join(' AND ')}
+        ORDER BY s.email ASC
+        LIMIT 500`,
+      params
+    );
+    return res.json({ contacts });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 router.get('/compose', requireAuth, requireCapability('send'), async (req, res, next) => {
   try {
     const draft = {
@@ -346,6 +387,8 @@ router.get('/compose', requireAuth, requireCapability('send'), async (req, res, 
       bcc: '',
       subject: String(req.query.subject || ''),
       body: String(req.query.body || ''),
+      html: '',
+      templateId: '',
     };
     let inReplyTo = req.query.inReplyTo ? String(req.query.inReplyTo) : '';
     let references = '';
@@ -371,6 +414,7 @@ router.get('/compose', requireAuth, requireCapability('send'), async (req, res, 
     }
 
     const provider = await getMailboxProvider();
+    const opts = await composeOptions();
     res.render('inbox/compose', {
       title: 'Compose',
       active: 'inbox',
@@ -379,6 +423,8 @@ router.get('/compose', requireAuth, requireCapability('send'), async (req, res, 
       references,
       error: null,
       configured: await provider.isConfigured(),
+      templates: opts.templates,
+      lists: opts.lists,
     });
   } catch (err) {
     next(err);
@@ -391,6 +437,7 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
   const bcc = String(req.body.bcc || '').trim();
   const subject = String(req.body.subject || '').trim();
   const body = String(req.body.body || '');
+  const html = String(req.body.html || '').trim();
   const inReplyTo = String(req.body.inReplyTo || '').trim() || null;
   const references = String(req.body.references || '').trim() || null;
   const files = req.files || [];
@@ -398,16 +445,19 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
   try {
     const provider = await getMailboxProvider();
     const configured = await provider.isConfigured();
+    const opts = await composeOptions();
 
     const rerender = (errorMsg) =>
       res.status(400).render('inbox/compose', {
         title: 'Compose',
         active: 'inbox',
-        draft: { to, cc, bcc, subject, body },
+        draft: { to, cc, bcc, subject, body, html, templateId: String(req.body.templateId || '') },
         inReplyTo: inReplyTo || '',
         references: references || '',
         error: errorMsg,
         configured,
+        templates: opts.templates,
+        lists: opts.lists,
       });
 
     const recipients = h.splitAddresses(to);
@@ -416,6 +466,7 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
     if (!validTo.length) return rerender('Add at least one valid recipient.');
     if (invalid.length) return rerender(`These addresses look invalid: ${invalid.join(', ')}.`);
     if (!subject) return rerender('Add a subject.');
+    if (!body.trim() && !html) return rerender('Add a message.');
 
     if (!configured) {
       return rerender('Mailbox is not configured, so nothing was sent. Add IMAP/SMTP credentials in Settings → Integrations.');
@@ -429,6 +480,23 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
       contentType: f.mimetype,
     }));
 
+    // Personalise tokens using the first recipient's contact record when known.
+    let data = { email: validTo[0], first_name: '', last_name: '', company: '' };
+    const known = await db.one(
+      'SELECT first_name, last_name, company FROM subscribers WHERE email = ? LIMIT 1',
+      [validTo[0].toLowerCase()]
+    );
+    if (known) {
+      data = {
+        ...data,
+        first_name: known.first_name || '',
+        last_name: known.last_name || '',
+        company: known.company || '',
+      };
+    }
+    const textFinal = h.personalise(body, data);
+    const htmlFinal = html ? h.personalise(html, data) : undefined;
+
     let result;
     try {
       result = await provider.send({
@@ -436,7 +504,8 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
         cc: ccList.length ? ccList.join(', ') : undefined,
         bcc: bccList.length ? bccList.join(', ') : undefined,
         subject,
-        text: body,
+        text: textFinal,
+        html: htmlFinal,
         inReplyTo,
         references,
         attachments,
@@ -455,7 +524,8 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
           to: validTo.join(', '),
           cc: ccList.length ? ccList.join(', ') : undefined,
           subject,
-          text: body,
+          text: textFinal,
+          html: htmlFinal,
           fromName: from.fromName,
           fromEmail: from.fromEmail || from.user,
         });
