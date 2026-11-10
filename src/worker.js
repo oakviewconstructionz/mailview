@@ -35,7 +35,7 @@ async function promoteScheduled() {
 
 async function pickQueued() {
   return db.query(
-    "SELECT * FROM campaigns WHERE status IN ('queued','syncing') ORDER BY COALESCE(started_at, created_at) ASC LIMIT 5"
+    "SELECT * FROM campaigns WHERE status IN ('queued','syncing') OR (status = 'sending' AND provider_campaign_id IS NULL) ORDER BY COALESCE(started_at, created_at) ASC LIMIT 5"
   );
 }
 

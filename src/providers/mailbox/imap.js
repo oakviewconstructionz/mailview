@@ -119,11 +119,27 @@ class ImapMailboxProvider {
       tls: {
         rejectUnauthorized: false,
       },
-      // Gmail keeps IMAP connections alive; a generous timeout avoids flakiness.
+      // Generous timeouts for stability
       greetingTimeout: 15000,
-      socketTimeout: 60000,
+      socketTimeout: 45000,
     });
-    await client.connect();
+
+    try {
+      await client.connect();
+    } catch (connErr) {
+      const msg = connErr.message || '';
+      if (msg.includes('AUTHENTICATIONFAILED') || msg.includes('Invalid credentials') || msg.includes('login failed')) {
+        if ((cfg.host || '').includes('gmail')) {
+          throw new Error('Gmail authentication failed. For Gmail / Google Workspace, you must generate and use an App Password (Google Account → Security → 2-Step Verification → App passwords).');
+        }
+        throw new Error(`IMAP login failed for ${cfg.user}: check your username and password.`);
+      }
+      if (connErr.code === 'ECONNREFUSED' || connErr.code === 'ENOTFOUND') {
+        throw new Error(`Could not connect to IMAP server at ${cfg.host}:${cfg.port} (${connErr.code}).`);
+      }
+      throw connErr;
+    }
+
     try {
       return await fn(client);
     } finally {
@@ -203,40 +219,51 @@ class ImapMailboxProvider {
   async fetchEnvelopes(folder, { limit = 40, search } = {}) {
     return this.withClient(async (client) =>
       this.withMailbox(client, folder, async (realFolder) => {
-        if (!client.mailbox || client.mailbox.exists === 0) {
+        if (!client.mailbox || !client.mailbox.exists) {
           return [];
         }
 
-        let range = `${Math.max(1, client.mailbox.exists - limit + 1)}:*`;
-        let query;
+        let fetchRange;
+        let fetchOptions = {};
         if (search) {
           const found = await client.search({ or: [{ subject: search }, { body: search }, { from: search }] }, { uid: true });
           const uids = (found || []).slice(-limit);
           if (!uids.length) return [];
-          query = { uid: uids.join(',') };
-          range = undefined;
+          fetchRange = uids.join(',');
+          fetchOptions = { uid: true };
         } else {
-          query = { seq: range };
+          const total = client.mailbox.exists;
+          const start = Math.max(1, total - limit + 1);
+          fetchRange = `${start}:${total}`;
+          fetchOptions = { uid: false };
         }
 
+        const queryFields = { uid: true, envelope: true, flags: true, size: true, bodyStructure: true };
         const out = [];
-        for await (const msg of client.fetch(query, { uid: true, envelope: true, flags: true, size: true, bodyStructure: true })) {
-          const env = msg.envelope || {};
-          out.push({
-            uid: msg.uid,
-            messageId: env.messageId || null,
-            subject: env.subject || '(no subject)',
-            from: this.normalizeAddress(env.from)[0] || { name: '', email: '' },
-            to: this.normalizeAddress(env.to),
-            cc: this.normalizeAddress(env.cc),
-            date: env.date ? new Date(env.date) : new Date(),
-            seen: msg.flags ? msg.flags.has('\\Seen') : false,
-            flagged: msg.flags ? msg.flags.has('\\Flagged') : false,
-            draft: msg.flags ? msg.flags.has('\\Draft') : false,
-            size: msg.size || null,
-            hasAttachments: this.structureHasAttachments(msg.bodyStructure),
-          });
+
+        try {
+          for await (const msg of client.fetch(fetchRange, queryFields, fetchOptions)) {
+            const env = msg.envelope || {};
+            out.push({
+              uid: msg.uid,
+              messageId: env.messageId || null,
+              subject: env.subject || '(no subject)',
+              from: this.normalizeAddress(env.from)[0] || { name: '', email: '' },
+              to: this.normalizeAddress(env.to),
+              cc: this.normalizeAddress(env.cc),
+              date: env.date ? new Date(env.date) : new Date(),
+              seen: msg.flags ? msg.flags.has('\\Seen') : false,
+              flagged: msg.flags ? msg.flags.has('\\Flagged') : false,
+              draft: msg.flags ? msg.flags.has('\\Draft') : false,
+              size: msg.size || null,
+              hasAttachments: this.structureHasAttachments(msg.bodyStructure),
+            });
+          }
+        } catch (fetchErr) {
+          // If sequence query hit an edge case, return what we have or rethrow
+          if (!out.length) throw fetchErr;
         }
+
         out.sort((a, b) => b.date - a.date);
         return out;
       })
@@ -408,6 +435,9 @@ class ImapMailboxProvider {
       tls: {
         rejectUnauthorized: false,
       },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 30000,
     });
   }
 

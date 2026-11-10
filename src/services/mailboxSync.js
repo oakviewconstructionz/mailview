@@ -242,8 +242,9 @@ async function upsertMessage(folder, envelope, full) {
  */
 async function syncMessages(folder = 'INBOX', { limit = 40, search } = {}) {
   const provider = await getMailboxProvider();
-  if (!(await provider.isConfigured())) {
-    const err = new Error('Mailbox is not configured. Add IMAP credentials in Settings → Integrations.');
+  const imap = typeof provider.imapConfig === 'function' ? await provider.imapConfig() : null;
+  if (!imap || !imap.host || !imap.user || !imap.pass) {
+    const err = new Error('IMAP is not fully configured. Enter your IMAP host, username and password in Settings → Integrations.');
     err.code = 'NOT_CONFIGURED';
     throw err;
   }

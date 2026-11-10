@@ -147,13 +147,17 @@
         }
         if (r.ok) { window.location = '/inbox'; return null; }
         return r.text().then(function (html) {
+          if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var fresh = doc.getElementById('composePanel');
           var cur = document.getElementById('composePanel');
           if (fresh && cur) { cur.innerHTML = fresh.innerHTML; bindShell(); }
           else { window.location.reload(); }
         });
-      }).catch(function () { form.submit(); });
+      }).catch(function (err) {
+        showNotice('error', (err && err.message) || 'Send timed out or network error. Check SMTP settings.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
+      });
     });
   }
 

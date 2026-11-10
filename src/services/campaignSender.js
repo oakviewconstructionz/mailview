@@ -327,6 +327,12 @@ async function drainSmtpQueue(campaign, { onTick } = {}) {
   const fromName = campaign.from_name || (await settings.get('mailbox.from_name'));
   const fromEmail = campaign.from_email || (await settings.get('mailbox.from_email')) || (await settings.get('mailbox.smtp.user'));
 
+  // Reclaim any stalled 'sending' recipients from an interrupted run
+  await db.query(
+    "UPDATE campaign_recipients SET status = 'queued' WHERE campaign_id = ? AND status = 'sending' AND sent_at IS NULL",
+    [campaign.id]
+  );
+
   for (;;) {
     // Stop cleanly if the campaign was paused/cancelled from the UI.
     const fresh = await db.one('SELECT status FROM campaigns WHERE id = ?', [campaign.id]);

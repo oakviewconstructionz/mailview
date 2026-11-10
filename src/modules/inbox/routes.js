@@ -97,35 +97,39 @@ router.get('/', requireAuth, async (req, res, next) => {
     const selectedId = parseInt(req.query.message, 10) || null;
 
     const provider = await getMailboxProvider();
+    const imapCfg = typeof provider.imapConfig === 'function' ? await provider.imapConfig() : {};
+    const imapReady = Boolean(imapCfg.host && imapCfg.user && imapCfg.pass);
     const configured = await provider.isConfigured();
 
     // Folder sidebar: prefer the real provider list, else a static fallback.
     let folders = defaultFolders();
     let error = null;
-    if (configured) {
+    if (imapReady) {
       try {
         folders = defaultFolders(await provider.listFolders());
       } catch (err) {
-        error = `Could not list folders: ${err.message}`;
+        // Fallback to default folders
       }
     }
 
     let messages = await readCachedMessages(folder, q);
 
     // Sync on initial visit to empty folder, or if cache hasn't synced in 60s
-    const lastSyncRow = await db.one(
-      'SELECT MAX(synced_at) AS last_sync FROM mail_messages WHERE account = ?',
-      [ACCOUNT]
-    ).catch(() => null);
-    const lastSyncTime = lastSyncRow && lastSyncRow.last_sync ? new Date(lastSyncRow.last_sync).getTime() : 0;
-    const shouldSync = configured && (!messages.length || (Date.now() - lastSyncTime > 60 * 1000));
+    if (imapReady) {
+      const lastSyncRow = await db.one(
+        'SELECT MAX(synced_at) AS last_sync FROM mail_messages WHERE account = ?',
+        [ACCOUNT]
+      ).catch(() => null);
+      const lastSyncTime = lastSyncRow && lastSyncRow.last_sync ? new Date(lastSyncRow.last_sync).getTime() : 0;
+      const shouldSync = !messages.length || (Date.now() - lastSyncTime > 60 * 1000);
 
-    if (shouldSync) {
-      try {
-        await syncMessages(folder, { limit: 40, search: q || undefined });
-        messages = await readCachedMessages(folder, q);
-      } catch (err) {
-        if (!messages.length) error = `Sync failed: ${err.message}`;
+      if (shouldSync) {
+        try {
+          await syncMessages(folder, { limit: 40, search: q || undefined });
+          messages = await readCachedMessages(folder, q);
+        } catch (err) {
+          if (!messages.length) error = `Sync failed: ${err.message}`;
+        }
       }
     }
 
@@ -546,8 +550,11 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
     const configured = await provider.isConfigured();
     const opts = await composeOptions();
 
-    const rerender = (errorMsg) =>
-      res.status(400).render('inbox/compose', {
+    const rerender = (errorMsg) => {
+      if ((req.get('X-Requested-With') || '') === 'XMLHttpRequest' || (req.get('accept') || '').includes('application/json')) {
+        return res.status(400).json({ ok: false, error: errorMsg });
+      }
+      return res.status(400).render('inbox/compose', {
         title: 'Compose',
         active: 'inbox',
         draft: { to, cc, bcc, subject, body, html, templateId: String(req.body.templateId || '') },
@@ -557,6 +564,7 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
         configured,
         templates: opts.templates,
       });
+    };
 
     const recipients = h.splitAddresses(to);
     const validTo = recipients.filter(h.isValidEmail);
