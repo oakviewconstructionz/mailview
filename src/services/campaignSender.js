@@ -294,6 +294,8 @@ function personaliseTokens(recipient, unsubscribeUrl) {
 function buildRecipientHtml(campaign, recipient, links) {
   const unsubscribeUrl = tracking.buildUnsubscribeUrl(recipient.token);
   let html = helpers.personalise(campaign.html || '', personaliseTokens(recipient, unsubscribeUrl));
+  // Swap any hardcoded address after `eml=` for this recipient's own address.
+  html = helpers.mergeRecipientEmailInLinks(html, recipient.email);
 
   // Rewrite links → tracking redirect (only for links we registered).
   html = helpers.rewriteLinks(html, (url) => {
@@ -305,8 +307,10 @@ function buildRecipientHtml(campaign, recipient, links) {
   const pixel = `<img src="${tracking.buildPixelUrl(recipient.token)}" width="1" height="1" alt="" style="display:none" />`;
   html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${pixel}</body>`) : html + pixel;
 
-  const text = helpers.personalise(campaign.text || helpers.stripTags(campaign.html || ''), personaliseTokens(recipient, unsubscribeUrl))
-    + `\n\nUnsubscribe: ${unsubscribeUrl}`;
+  const text = helpers.mergeRecipientEmailInLinks(
+    helpers.personalise(campaign.text || helpers.stripTags(campaign.html || ''), personaliseTokens(recipient, unsubscribeUrl)),
+    recipient.email
+  ) + `\n\nUnsubscribe: ${unsubscribeUrl}`;
 
   return { html, text, unsubscribeUrl };
 }

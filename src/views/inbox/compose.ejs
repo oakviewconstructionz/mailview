@@ -44,28 +44,6 @@
   </div>
   <% } %>
 
-  <div class="card mb-3">
-    <div class="card-head"><h2>Add recipients in bulk</h2></div>
-    <div class="card-body">
-      <div class="row wrap" style="gap:8px; align-items:center;">
-        <select class="select" id="listPicker" style="max-width:230px;">
-          <option value="">All contacts</option>
-          <% lists.forEach(function (l) { %>
-            <option value="<%= l.id %>"><%= l.name %></option>
-          <% }); %>
-        </select>
-        <input class="input" id="contactSearch" type="search" placeholder="Search name or email…" style="max-width:230px;padding:7px 10px;font-size:13px;">
-        <select class="select" id="addTarget" style="max-width:130px;">
-          <option value="to">Add to To</option>
-          <option value="cc">Add to Cc</option>
-          <option value="bcc">Add to Bcc</option>
-        </select>
-        <button class="btn btn-sm" type="button" id="addFiltered">Add all shown</button>
-      </div>
-      <div id="contactResults" class="mt-2"></div>
-    </div>
-  </div>
-
   <form id="composeForm" method="post" action="/inbox/compose" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <input type="hidden" name="inReplyTo" value="<%= inReplyTo || '' %>">
@@ -119,23 +97,6 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  function splitEmails(v) {
-    return String(v || '').split(/[,;\n]/).map(function (s) { return s.trim(); }).filter(Boolean);
-  }
-  function addEmails(field, emails) {
-    if (!field) return 0;
-    var seen = splitEmails(field.value).map(function (e) { return e.toLowerCase(); });
-    var added = 0;
-    emails.forEach(function (e) {
-      var v = String(e || '').trim();
-      if (!v || seen.indexOf(v.toLowerCase()) !== -1) return;
-      seen.push(v.toLowerCase());
-      field.value = field.value.trim() ? field.value.replace(/[\s,;]+$/, '') + ', ' + v : v;
-      added += 1;
-    });
-    return added;
-  }
-
   function bindForm() {
     var form = document.getElementById('composeForm');
     if (!form || form.dataset.bound === '1') return;
@@ -207,93 +168,9 @@
     });
   }
 
-  function bindRecipients() {
-    var search = document.getElementById('contactSearch');
-    if (!search || search.dataset.bound === '1') return;
-    search.dataset.bound = '1';
-
-    var listPicker = document.getElementById('listPicker');
-    var results = document.getElementById('contactResults');
-    var addAll = document.getElementById('addFiltered');
-    var target = document.getElementById('addTarget');
-    var timer = null;
-
-    function load() {
-      var q = search.value.trim();
-      var listId = listPicker ? listPicker.value : '';
-      var url = '/inbox/recipients?q=' + encodeURIComponent(q) + (listId ? '&list_id=' + encodeURIComponent(listId) : '');
-      results.innerHTML = '<div class="small muted">Loading…</div>';
-      fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
-        .then(function (r) { if (!r.ok) throw new Error('lookup failed'); return r.json(); })
-        .then(function (data) {
-          var list = data.contacts || [];
-          if (!list.length) { results.innerHTML = '<div class="small muted">No matching contacts.</div>'; return; }
-          results.innerHTML = '';
-          list.forEach(function (c) {
-            var name = [c.first_name, c.last_name].filter(Boolean).join(' ');
-            var row = document.createElement('div');
-            row.className = 'contact-row';
-            row.dataset.email = c.email;
-            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line-soft);';
-
-            var info = document.createElement('div');
-            info.style.cssText = 'flex:1;min-width:0;';
-            var label = document.createElement('div');
-            label.className = 'small';
-            label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            label.textContent = name ? name + ' · ' + c.email : c.email;
-            info.appendChild(label);
-            if (c.company) {
-              var co = document.createElement('div');
-              co.className = 'small muted';
-              co.textContent = c.company;
-              info.appendChild(co);
-            }
-
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-sm';
-            btn.textContent = 'Add';
-            btn.addEventListener('click', function () {
-              var field = document.getElementById(target.value);
-              var n = addEmails(field, [c.email]);
-              btn.textContent = n ? 'Added ✓' : 'Already added';
-              btn.disabled = true;
-            });
-
-            row.appendChild(info);
-            row.appendChild(btn);
-            results.appendChild(row);
-          });
-        })
-        .catch(function () { results.innerHTML = '<div class="small muted">Could not load contacts.</div>'; });
-    }
-
-    search.addEventListener('input', function () {
-      clearTimeout(timer);
-      timer = setTimeout(load, 250);
-    });
-    if (listPicker) listPicker.addEventListener('change', load);
-
-    if (addAll) addAll.addEventListener('click', function () {
-      var emails = [];
-      results.querySelectorAll('.contact-row').forEach(function (row) {
-        if (row.dataset.email) emails.push(row.dataset.email);
-      });
-      if (!emails.length) return;
-      var field = document.getElementById(target.value);
-      var n = addEmails(field, emails);
-      addAll.textContent = n ? 'Added ' + n : 'All already added';
-      setTimeout(function () { addAll.textContent = 'Add all shown'; }, 1800);
-    });
-
-    load();
-  }
-
   function bindShell() {
     bindForm();
     bindTemplate();
-    bindRecipients();
   }
 
   bindShell();

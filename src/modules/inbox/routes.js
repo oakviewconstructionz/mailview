@@ -56,13 +56,10 @@ function quoteOriginal(msg) {
   return `\n\n---------- Original message ----------\nFrom: ${msg.from_name || ''} <${msg.from_email || ''}>\nDate: ${h.formatDateTime(when)}\nSubject: ${msg.subject || ''}\n\n${body || ''}`;
 }
 
-/** Templates + lists used to prefill the composer. */
+/** Templates used to prefill the composer. */
 async function composeOptions() {
-  const [templates, lists] = await Promise.all([
-    db.query('SELECT id, name, subject FROM templates ORDER BY updated_at DESC'),
-    db.query('SELECT id, name FROM lists ORDER BY name ASC'),
-  ]);
-  return { templates, lists };
+  const templates = await db.query('SELECT id, name, subject FROM templates ORDER BY updated_at DESC');
+  return { templates };
 }
 
 /* ------------------------------------------------------------------ main view */
@@ -347,38 +344,6 @@ router.get('/attachment/:id', requireAuth, async (req, res, next) => {
 
 /* ------------------------------------------------------------------ compose */
 
-// Contact lookup powering the composer's bulk recipient picker.
-router.get('/recipients', requireAuth, async (req, res, next) => {
-  try {
-    const q = String(req.query.q || '').trim();
-    const listId = parseInt(req.query.list_id, 10) || 0;
-
-    const where = ["s.status <> 'unsubscribed'"];
-    const params = [];
-    if (q) {
-      where.push('(s.email LIKE ? OR s.first_name LIKE ? OR s.last_name LIKE ? OR s.company LIKE ?)');
-      const like = `%${q}%`;
-      params.push(like, like, like, like);
-    }
-    if (listId) {
-      where.push('EXISTS (SELECT 1 FROM list_subscribers ls WHERE ls.subscriber_id = s.id AND ls.list_id = ?)');
-      params.push(listId);
-    }
-
-    const contacts = await db.query(
-      `SELECT s.id, s.email, s.first_name, s.last_name, s.company, s.status
-         FROM subscribers s
-        WHERE ${where.join(' AND ')}
-        ORDER BY s.email ASC
-        LIMIT 500`,
-      params
-    );
-    return res.json({ contacts });
-  } catch (err) {
-    return next(err);
-  }
-});
-
 router.get('/compose', requireAuth, requireCapability('send'), async (req, res, next) => {
   try {
     const draft = {
@@ -424,7 +389,6 @@ router.get('/compose', requireAuth, requireCapability('send'), async (req, res, 
       error: null,
       configured: await provider.isConfigured(),
       templates: opts.templates,
-      lists: opts.lists,
     });
   } catch (err) {
     next(err);
@@ -457,7 +421,6 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
         error: errorMsg,
         configured,
         templates: opts.templates,
-        lists: opts.lists,
       });
 
     const recipients = h.splitAddresses(to);
@@ -481,7 +444,9 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
     }));
 
     // Personalise tokens using the first recipient's contact record when known.
-    let data = { email: validTo[0], first_name: '', last_name: '', company: '' };
+    const sender = typeof provider.smtpConfig === 'function' ? await provider.smtpConfig() : {};
+    const unsubscribeUrl = `mailto:${sender.fromEmail || sender.user || validTo[0]}?subject=Unsubscribe`;
+    let data = { email: validTo[0], first_name: '', last_name: '', company: '', unsubscribe_url: unsubscribeUrl };
     const known = await db.one(
       'SELECT first_name, last_name, company FROM subscribers WHERE email = ? LIMIT 1',
       [validTo[0].toLowerCase()]
@@ -494,8 +459,9 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
         company: known.company || '',
       };
     }
-    const textFinal = h.personalise(body, data);
-    const htmlFinal = html ? h.personalise(html, data) : undefined;
+    // Fill {{tokens}}, then swap any hardcoded address after `eml=` for the recipient's own.
+    const textFinal = h.mergeRecipientEmailInLinks(h.personalise(body, data), data.email);
+    const htmlFinal = html ? h.mergeRecipientEmailInLinks(h.personalise(html, data), data.email) : undefined;
 
     let result;
     try {

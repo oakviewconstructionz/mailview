@@ -103,6 +103,19 @@ function personalise(content, data) {
   });
 }
 
+/**
+ * Link merge for hardcoded addresses.
+ *
+ * Templates often keep a sample address in a link, e.g.
+ * .../doc.html?eml=someone@example.com . On send we swap whatever sits after
+ * `eml=` for the real recipient so each person's link carries their own
+ * address. The explicit {{email}} token still works too.
+ */
+function mergeRecipientEmailInLinks(content, email) {
+  if (!content || !email) return content || '';
+  return String(content).replace(/([?&]eml=)[^"'&\s>]*/gi, (match, prefix) => prefix + email);
+}
+
 /** Rewrites bare URLs in HTML to a tracking URL (used for click tracking). */
 function rewriteLinks(html, rewriter) {
   return String(html || '').replace(/href\s*=\s*"([^"]+)"/gi, (match, url) => {
@@ -139,6 +152,7 @@ module.exports = {
   isValidEmail,
   splitAddresses,
   personalise,
+  mergeRecipientEmailInLinks,
   rewriteLinks,
   paginate,
 };
