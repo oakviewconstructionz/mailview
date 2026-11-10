@@ -501,11 +501,15 @@ async function bulkSend(campaign) {
   if (!fresh || fresh.status !== 'syncing') return;
 
   // 2) Create + trigger the campaign at the provider.
+  const fromEmail = campaign.from_email || (await settings.get('mailbox.from_email')) || (await settings.get('delivery.smtp.from')) || 'hello@oak-viewconstruction.com';
+  const fromName = campaign.from_name || (await settings.get('mailbox.from_name')) || 'OakView Construction';
   const created = await provider.createCampaign({
     title: campaign.name,
     subject: campaign.subject,
-    from: campaign.from_name || (await settings.get('mailbox.from_name')) || 'OakView Construction',
-    reply_to: campaign.reply_to || campaign.from_email || (await settings.get('mailbox.from_email')),
+    from: fromEmail,
+    fromEmail: fromEmail,
+    fromName: fromName,
+    reply_to: campaign.reply_to || fromEmail,
     preheader: campaign.preheader,
     contentType: 'html',
     content: campaign.html || '',

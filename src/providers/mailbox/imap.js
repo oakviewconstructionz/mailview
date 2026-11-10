@@ -59,7 +59,9 @@ class ImapMailboxProvider {
   async isConfigured() {
     const imap = await this.imapConfig();
     const smtp = await this.smtpConfig();
-    return Boolean((imap.host && imap.user && imap.pass) || (smtp.host && (smtp.fromEmail || smtp.user)));
+    const imapReady = Boolean(imap.host && imap.user && imap.pass);
+    const smtpReady = Boolean(smtp.host && smtp.user && smtp.pass);
+    return Boolean(imapReady || smtpReady);
   }
 
   async verify() {

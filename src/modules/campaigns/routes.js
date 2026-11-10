@@ -351,14 +351,16 @@ router.post('/:id/test', requireCapability('send'), async (req, res, next) => {
       req.flash('error', 'The delivery service is not configured yet — add credentials in Settings.');
       return res.redirect(`/campaigns/${id}`);
     }
-    const fromName = campaign.from_name || (await settings.get('mailbox.from_name'));
-    const fromEmail = campaign.from_email || (await settings.get('mailbox.from_email')) || (await settings.get('mailbox.smtp.user'));
+    const fromName = campaign.from_name || (await settings.get('mailbox.from_name')) || 'OakView Construction';
+    const fromEmail = campaign.from_email || (await settings.get('mailbox.from_email')) || (await settings.get('delivery.smtp.from')) || (await settings.get('mailbox.smtp.user')) || 'hello@oak-viewconstruction.com';
     await provider.sendMessage({
       to,
       subject: `[Test] ${helpers.personalise(campaign.subject || '', SAMPLE_DATA)}`,
       html: helpers.personalise(campaign.html || '', SAMPLE_DATA),
       text: helpers.personalise(campaign.text || helpers.stripTags(campaign.html || ''), SAMPLE_DATA),
-      from: fromEmail ? `${fromName || ''} <${fromEmail}>`.trim() : undefined,
+      from: `${fromName || ''} <${fromEmail}>`.trim(),
+      fromName,
+      fromEmail,
       replyTo: campaign.reply_to || fromEmail,
     });
     await logActivity(req.user.id, 'campaign.test', { id, to }, req.ip);

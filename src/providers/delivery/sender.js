@@ -99,11 +99,25 @@ class SenderDeliveryProvider extends BaseDeliveryProvider {
     });
   }
 
-  /** Lightweight credential check. */
+  /** Lightweight credential check. Also verifies sending is permitted. */
   async verify() {
     try {
       const data = await this.request('GET', '/groups?page=1&limit=1');
       const count = (data && data.meta && data.meta.total) || (Array.isArray(data && data.data) ? data.data.length : 0);
+
+      // Probe /message/send to check if the account has sending capability or is suspended
+      try {
+        const token = await this.token();
+        const http = this.client(token);
+        const probe = await http.post('/message/send', {});
+        if (probe.status === 403 && probe.data && (probe.data.message || '').toLowerCase().includes('suspended')) {
+          return {
+            ok: false,
+            message: `Sender.net account suspended: "${probe.data.message}". Contact Sender.net support to reactivate or use an SMTP relay in Settings.`,
+          };
+        }
+      } catch (_) {}
+
       return { ok: true, message: `Connected to Sender.net. ${count} group(s) visible.` };
     } catch (err) {
       return { ok: false, message: err.message };
@@ -142,14 +156,17 @@ class SenderDeliveryProvider extends BaseDeliveryProvider {
   }
 
   async createCampaign(opts) {
+    const fromEmail = opts.fromEmail || opts.from_email || (opts.from && opts.from.includes('@') ? opts.from : null) || (await settings.get('mailbox.from_email')) || (await settings.get('delivery.smtp.from')) || 'hello@oak-viewconstruction.com';
+    const replyTo = opts.reply_to || opts.replyTo || fromEmail;
     const body = {
-      title: opts.title,
+      title: opts.title || 'Campaign',
       subject: opts.subject,
-      from: opts.from,
-      reply_to: opts.reply_to,
+      from: fromEmail,
+      reply_to: replyTo,
       content_type: opts.contentType || 'html',
-      content: opts.content,
+      content: opts.content || '<p></p>',
     };
+    if (opts.fromName || opts.from_name) body.from_name = opts.fromName || opts.from_name;
     if (opts.preheader) body.preheader = opts.preheader;
     if (opts.groups && opts.groups.length) body.groups = opts.groups;
     if (opts.segments && opts.segments.length) body.segments = opts.segments;
@@ -221,6 +238,11 @@ class SenderDeliveryProvider extends BaseDeliveryProvider {
       fromObj = { email: fromEmail, name: fromName || '' };
     } else {
       fromObj = parseAddr(from);
+    }
+    if (!fromObj.email) {
+      const mbEmail = (await settings.get('mailbox.from_email')) || (await settings.get('delivery.smtp.from')) || (await settings.get('mailbox.smtp.user'));
+      fromObj.email = mbEmail || 'hello@oak-viewconstruction.com';
+      fromObj.name = fromObj.name || fromName || (await settings.get('mailbox.from_name')) || 'OakView Construction';
     }
 
     // Build the to array: Sender.net /message/send accepts a single recipient

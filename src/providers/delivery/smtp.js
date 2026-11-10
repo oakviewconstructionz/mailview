@@ -58,7 +58,7 @@ class SmtpDeliveryProvider extends BaseDeliveryProvider {
 
   async isConfigured() {
     const c = await this.config();
-    return Boolean(c.host && (c.from || c.user));
+    return Boolean(c.host && c.user && c.pass);
   }
 
   async transporter() {

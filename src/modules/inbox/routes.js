@@ -633,8 +633,12 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
     const htmlFinal = html ? h.mergeRecipientEmailInLinks(h.personalise(html, data), data.email) : undefined;
 
     let result;
-    if (configured) {
-      // Primary path: send via IMAP/SMTP mailbox provider.
+    const smtpCfg = typeof provider.smtpConfig === 'function' ? await provider.smtpConfig() : {};
+    const smtpReady = Boolean(smtpCfg.host && smtpCfg.user && smtpCfg.pass);
+    let smtpErr = null;
+
+    if (smtpReady) {
+      // Primary path: send via IMAP/SMTP mailbox provider when credentials are fully provided.
       try {
         result = await provider.send({
           to: validTo.join(', '),
@@ -648,18 +652,18 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
           attachments,
         });
       } catch (err) {
-        return rerender(`Send failed: ${err.message}`);
+        smtpErr = err;
       }
-    } else {
-      // Fallback path: send via Sender.net transactional API.
-      // Attachments are not supported by Sender.net /message/send; warn if any were attached.
+    }
+
+    // Fallback or primary Sender.net path: when SMTP is not configured or failed
+    if (!result && senderConfigured) {
       if (files.length) {
-        // Non-fatal warning — send without attachments.
         req.flash('warn', 'Attachments are not supported when sending via Sender.net. The message was sent without them.');
       }
       try {
         result = await deliveryProvider.sendMessage({
-          to: validTo,          // array — provider.sendMessage iterates recipients
+          to: validTo,
           subject,
           html: htmlFinal || undefined,
           text: textFinal,
@@ -667,9 +671,16 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
           fromEmail,
           replyTo: fromEmail,
         });
-      } catch (err) {
-        return rerender(`Send failed (Sender.net): ${err.message}`);
+      } catch (senderErr) {
+        if (smtpErr) {
+          return rerender(`Send failed: SMTP rejected (${smtpErr.message}) and Sender.net rejected (${senderErr.message})`);
+        }
+        return rerender(`Send failed: ${senderErr.message}`);
       }
+    } else if (!result && smtpErr) {
+      return rerender(`Send failed via SMTP: ${smtpErr.message}`);
+    } else if (!result) {
+      return rerender('No email sending service is ready. Add your SMTP credentials (host, username, password) or a working Sender.net API token in Settings → Integrations.');
     }
 
     // Find the Sent folder path (from provider if connected, or fallback)
