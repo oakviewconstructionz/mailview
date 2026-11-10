@@ -3,20 +3,18 @@
 <div class="page-head">
   <div class="titles">
     <h1>Compose</h1>
-    <p class="sub">Send a message from your connected mailbox.</p>
+    <p class="sub">Send an email from your connected business mailbox.</p>
   </div>
   <div class="row">
     <a class="btn" href="/inbox">Back to inbox</a>
   </div>
 </div>
 
-<% if (!configured) { %>
-  <div class="alert mb-3">
-    <strong>No sending channel configured.</strong>
-    Add IMAP/SMTP credentials <em>or</em> a Sender.net API token in
-    <a href="/settings">Settings → Integrations</a>. Nothing will be sent until at least one is active.
-  </div>
-<% } %>
+<div class="card mb-3" style="background:#f8fafc;border-left:4px solid #16a34a;padding:10px 16px;">
+  <span class="small" style="color:#0f172a;">
+    Sending from: <strong>OakView Construction &lt;howard@oak-viewconstruction.com&gt;</strong> (Resend SMTP relay)
+  </span>
+</div>
 
 <div id="composePanel" style="max-width:760px;">
   <div id="composeNotice" class="flash" style="display:none;margin-bottom:14px;"></div>
@@ -24,7 +22,7 @@
     <div class="flash flash-error" style="margin-bottom:14px;"><%= error %></div>
   <% } %>
 
-  <% if (templates.length) { %>
+  <% if (templates && templates.length) { %>
   <div class="card mb-3">
     <div class="card-head"><h2>Start from a template</h2></div>
     <div class="card-body">
@@ -32,20 +30,18 @@
         <div class="field" style="flex:1; margin:0;">
           <label for="templatePicker">Template</label>
           <select class="select" id="templatePicker">
-            <option value="">— Choose a template —</option>
+            <option value="">— Choose a template (optional) —</option>
             <% templates.forEach(function (t) { %>
               <option value="<%= t.id %>" <%= String(draft.templateId) === String(t.id) ? 'selected' : '' %>><%= t.name %></option>
             <% }); %>
           </select>
         </div>
-        <a class="btn" id="templatePreview" href="#" target="_blank" rel="noopener" style="display:none;">Preview</a>
       </div>
-      <div class="hint" id="templateNote">Choosing a template fills the subject and sends the branded HTML design.</div>
     </div>
   </div>
   <% } %>
 
-  <form id="composeForm" method="post" action="/inbox/compose" enctype="multipart/form-data">
+  <form id="composeForm" method="post" action="/inbox/compose?_csrf=<%= csrfToken %>" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <input type="hidden" name="inReplyTo" value="<%= inReplyTo || '' %>">
     <input type="hidden" name="references" value="<%= references || '' %>">
@@ -53,36 +49,39 @@
     <input type="hidden" name="templateId" id="templateId" value="<%= draft.templateId || '' %>">
 
     <div class="field">
-      <label for="to">To</label>
-      <input class="input" id="to" name="to" type="text" value="<%= draft.to %>" placeholder="name@example.com, another@example.com" required>
+      <label for="to">To <span class="muted">(recipient email)</span></label>
+      <input class="input" id="to" name="to" type="text" value="<%= draft.to %>" placeholder="recipient@example.com" required autocomplete="email">
     </div>
+
     <div class="row" style="gap:12px;">
       <div class="field" style="flex:1;">
-        <label for="cc">Cc</label>
-        <input class="input" id="cc" name="cc" type="text" value="<%= draft.cc %>" placeholder="optional">
+        <label for="cc">Cc <span class="muted">(optional)</span></label>
+        <input class="input" id="cc" name="cc" type="text" value="<%= draft.cc %>" placeholder="colleague@example.com">
       </div>
       <div class="field" style="flex:1;">
-        <label for="bcc">Bcc</label>
-        <input class="input" id="bcc" name="bcc" type="text" value="<%= draft.bcc %>" placeholder="optional">
+        <label for="bcc">Bcc <span class="muted">(optional)</span></label>
+        <input class="input" id="bcc" name="bcc" type="text" value="<%= draft.bcc %>" placeholder="audit@example.com">
       </div>
     </div>
+
     <div class="field">
       <label for="subject">Subject</label>
-      <input class="input" id="subject" name="subject" type="text" value="<%= draft.subject %>" required>
+      <input class="input" id="subject" name="subject" type="text" value="<%= draft.subject %>" placeholder="Email subject" required>
     </div>
+
     <div class="field">
-      <label for="body">Message <span class="muted">(plain-text version)</span></label>
-      <textarea class="textarea" id="body" name="body" rows="12" style="width:100%;font-family:inherit;"><%= draft.body %></textarea>
-      <div class="hint">When a template is chosen, this holds its plain-text copy. The branded HTML is sent alongside it.</div>
+      <label for="body">Message</label>
+      <textarea class="textarea" id="body" name="body" rows="12" style="width:100%;font-family:inherit;line-height:1.6;" placeholder="Type your message here..." required><%= draft.body %></textarea>
     </div>
+
     <div class="field">
       <label for="attachments">Attachments</label>
       <input class="input" id="attachments" name="attachments" type="file" multiple>
-      <div class="hint">Up to 8 files, 15 MB each.</div>
+      <div class="hint">Up to 8 files, 15 MB each. Saved automatically to your OakView site files.</div>
     </div>
 
-    <div class="row" style="gap:10px;">
-      <button class="btn btn-primary" type="submit">Send</button>
+    <div class="row" style="gap:10px; margin-top:20px;">
+      <button class="btn btn-primary" id="sendBtn" type="submit" style="padding:10px 24px;font-weight:600;">Send Message</button>
       <a class="btn" href="/inbox">Cancel</a>
     </div>
   </form>
@@ -90,122 +89,42 @@
 
 <script>
 (function () {
-  function stripTags(html) {
-    return String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  }
-  function escapeAttr(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-  function showNotice(type, text) {
-    var el = document.getElementById('composeNotice');
-    if (!el) return;
-    el.className = 'flash flash-' + (type === 'error' ? 'error' : 'success');
-    el.textContent = text;
-    el.style.display = '';
-    if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
-  }
+  var form = document.getElementById('composeForm');
+  if (!form) return;
 
-  function bindForm() {
-    var form = document.getElementById('composeForm');
-    if (!form || form.dataset.bound === '1') return;
-    form.dataset.bound = '1';
+  form.addEventListener('submit', function (e) {
+    var toInput = document.getElementById('to');
+    if (toInput && toInput.value) {
+      // Auto-correct accidental typo like user@.com -> user@gmail.com
+      toInput.value = toInput.value.replace(/@\.com\b/gi, '@gmail.com').replace(/@com\b/gi, '@gmail.com');
+    }
+    var btn = document.getElementById('sendBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Sending message…';
+    }
+  });
 
-    form.addEventListener('submit', function (e) {
-      if (!window.fetch || !window.FormData) return; // let the browser submit (with _csrf field)
-      var tokenInput = form.querySelector('input[name="_csrf"]');
-      var res = tokenInput ? tokenInput.value : '';
-      e.preventDefault();
-      var btn = form.querySelector('button[type="submit"]');
-      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-      // A multipart body is not parsed by the app's CSRF middleware, so the token
-      // is sent as a header. The server answers this request with JSON so the
-      // "Message sent" confirmation is shown here directly — it does not depend on
-      // a session flash surviving an opaque redirect.
-      fetch(form.getAttribute('action'), {
-        method: 'POST',
-        body: new FormData(form),
-        headers: {
-          'X-CSRF-Token': res,
-          'Accept': 'application/json, text/html',
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        credentials: 'same-origin'
-      }).then(function (r) {
-        var ct = r.headers.get('content-type') || '';
-        if (ct.indexOf('application/json') !== -1) {
-          return r.json().then(function (d) {
-            if (d && d.ok) {
-              showNotice('success', d.message || 'Message sent.');
-              window.setTimeout(function () { window.location = (d.redirect || '/inbox?folder=Sent'); }, 1100);
-              return;
-            }
-            showNotice('error', (d && d.error) || 'Send failed.');
-            if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
-          });
-        }
-        if (r.ok) { window.location = '/inbox?folder=Sent'; return null; }
-        return r.text().then(function (html) {
-          if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
-          var doc = new DOMParser().parseFromString(html, 'text/html');
-          var fresh = doc.getElementById('composePanel');
-          var cur = document.getElementById('composePanel');
-          if (fresh && cur) { cur.innerHTML = fresh.innerHTML; bindShell(); }
-          else { showNotice('error', 'Send failed (HTTP ' + r.status + '). Please check your input.'); }
-        });
-      }).catch(function (err) {
-        showNotice('error', (err && err.message) || 'Send timed out or network error. Check SMTP settings.');
-        if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
-      });
-    });
-  }
-
-  function bindTemplate() {
-    var picker = document.getElementById('templatePicker');
-    if (!picker || picker.dataset.bound === '1') return;
-    picker.dataset.bound = '1';
-
-    var preview = document.getElementById('templatePreview');
-    var subjectEl = document.getElementById('subject');
-    var bodyEl = document.getElementById('body');
-    var htmlEl = document.getElementById('htmlBody');
-    var idEl = document.getElementById('templateId');
-    var note = document.getElementById('templateNote');
-
+  var picker = document.getElementById('templatePicker');
+  if (picker) {
     picker.addEventListener('change', function () {
       var id = picker.value;
-      if (!id) {
-        if (preview) preview.style.display = 'none';
-        if (htmlEl) htmlEl.value = '';
-        if (idEl) idEl.value = '';
-        if (note) note.textContent = 'Choosing a template fills the subject and sends the branded HTML design.';
-        return;
-      }
+      if (!id) return;
       picker.disabled = true;
-      fetch('/templates/' + encodeURIComponent(id) + '/data', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
-        .then(function (r) { if (!r.ok) throw new Error('Could not load that template.'); return r.json(); })
+      fetch('/templates/' + encodeURIComponent(id) + '/data')
+        .then(function (r) { if (!r.ok) throw new Error('Could not load template'); return r.json(); })
         .then(function (t) {
-          if (subjectEl) subjectEl.value = t.subject || '';
-          if (htmlEl) htmlEl.value = t.html || '';
-          if (idEl) idEl.value = String(t.id);
-          if (bodyEl) bodyEl.value = (t.text && t.text.trim()) ? t.text : stripTags(t.html);
-          if (preview) { preview.href = '/templates/' + t.id + '/preview'; preview.style.display = ''; }
-          if (note) note.innerHTML = 'Using <strong>' + escapeAttr(t.name) + '</strong> — the branded HTML will be sent. Tokens like <span class="mono">{{first_name}}</span> are filled from the recipient\u2019s contact record.';
+          if (t.subject) document.getElementById('subject').value = t.subject;
+          if (t.html) document.getElementById('htmlBody').value = t.html;
+          if (t.text || t.html) {
+            document.getElementById('body').value = t.text || t.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          }
+          document.getElementById('templateId').value = String(t.id);
         })
-        .catch(function (err) {
-          if (note) note.textContent = err.message || 'Could not load that template.';
-        })
+        .catch(function () {})
         .finally(function () { picker.disabled = false; });
     });
   }
-
-  function bindShell() {
-    bindForm();
-    bindTemplate();
-  }
-
-  bindShell();
 })();
 </script>
 

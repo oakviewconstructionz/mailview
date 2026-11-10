@@ -92,6 +92,13 @@ async function seed() {
       await settings.set('mailbox.smtp.secure', 'true');
       await settings.set('mailbox.from_name', 'OakView Construction');
       await settings.set('mailbox.from_email', 'howard@oak-viewconstruction.com');
+      // Clear any broken Gmail IMAP settings so the inbox never hangs on boot
+      const currentImap = await settings.get('mailbox.imap.host');
+      if (currentImap && currentImap.toLowerCase().includes('gmail')) {
+        await settings.set('mailbox.imap.host', '');
+        await settings.set('mailbox.imap.user', '');
+        await settings.set('mailbox.imap.password', '');
+      }
       settings.clearCache();
       console.log('✓ auto-configured Resend SMTP relay & mailbox sending');
     }

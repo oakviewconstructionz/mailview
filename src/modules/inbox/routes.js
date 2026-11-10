@@ -697,15 +697,8 @@ const handleComposePost = async (req, res, next) => {
       return rerender('No email sending service is ready. Add your SMTP credentials (host, username, password) or a working Sender.net API token in Settings → Integrations.');
     }
 
-    // Find the Sent folder path (from provider if connected, or fallback)
-    let sentFolderPath = 'Sent';
-    if (configured) {
-      try {
-        const folders = defaultFolders(await provider.listFolders().catch(() => []));
-        const sentF = folders.find((f) => f.key === 'sent');
-        if (sentF) sentFolderPath = sentF.path;
-      } catch (_) {}
-    }
+    // Sent messages are stored immediately in the Sent folder
+    const sentFolderPath = 'Sent';
 
     const toObjects = validTo.map((e) => ({ name: '', email: e }));
     const ccObjects = ccList.map((e) => ({ name: '', email: e }));
@@ -739,22 +732,6 @@ const handleComposePost = async (req, res, next) => {
       }
     } catch (dbErr) {
       console.warn('Could not cache sent message in local db:', dbErr.message);
-    }
-
-    // Best-effort: keep a copy on the server in the IMAP Sent folder (not applicable for Sender.net).
-    if (configured && typeof provider.buildRaw === 'function' && typeof provider.append === 'function') {
-      try {
-        const raw = provider.buildRaw({
-          to: validTo.join(', '),
-          cc: ccList.length ? ccList.join(', ') : undefined,
-          subject,
-          text: textFinal,
-          html: htmlFinal,
-          fromName,
-          fromEmail,
-        });
-        await provider.append(sentFolderPath, raw, ['\\Seen']);
-      } catch (_) { /* non-fatal — the message was already sent and cached */ }
     }
 
     const sentMessage = `Message sent${result && result.messageId ? ` (${result.messageId})` : ''}.`;
