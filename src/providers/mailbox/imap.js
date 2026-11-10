@@ -262,8 +262,8 @@ class ImapMailboxProvider {
    * Deletes many messages from one folder in a single IMAP session. Opening a
    * fresh connection per message (as the single-message path does) is far too
    * slow for a folder-wide purge and gets throttled by providers like Gmail.
-   * Returns how many the server confirmed removed, so callers can report the
-   * truth instead of assuming success.
+   * The UID list is chunked so a very large selection never overflows a single
+   * IMAP command. Returns how many the server confirmed removed.
    */
   async removeMany(folder, uids) {
     const list = (uids || [])
@@ -273,12 +273,55 @@ class ImapMailboxProvider {
 
     return this.withClient(async (client) =>
       this.withMailbox(client, folder, async () => {
-        try {
-          const ok = await client.messageDelete(list.join(','), { uid: true });
-          return ok === false ? { removed: 0, failed: list.length } : { removed: list.length, failed: 0 };
-        } catch (err) {
-          return { removed: 0, failed: list.length, error: err.message };
+        let removed = 0;
+        let failed = 0;
+        const CHUNK = 300;
+        for (let i = 0; i < list.length; i += CHUNK) {
+          const chunk = list.slice(i, i + CHUNK);
+          try {
+            const ok = await client.messageDelete(chunk.join(','), { uid: true });
+            if (ok === false) failed += chunk.length;
+            else removed += chunk.length;
+          } catch (_) {
+            failed += chunk.length;
+          }
         }
+        return { removed, failed };
+      })
+    );
+  }
+
+  /**
+   * Wipes an entire folder: enumerates every UID on the server and deletes them
+   * in chunked batches. This is what "delete all" means — it does not depend on
+   * which messages we happen to have cached locally. Returns the true counts so
+   * the caller can report reality instead of assuming success.
+   */
+  async purgeFolder(folder) {
+    return this.withClient(async (client) =>
+      this.withMailbox(client, folder, async () => {
+        let uids = [];
+        try {
+          uids = (await client.search({ all: true }, { uid: true })) || [];
+        } catch (_) {
+          uids = [];
+        }
+        if (!uids.length) return { removed: 0, failed: 0, total: 0 };
+
+        let removed = 0;
+        let failed = 0;
+        const CHUNK = 300;
+        for (let i = 0; i < uids.length; i += CHUNK) {
+          const chunk = uids.slice(i, i + CHUNK).map(String);
+          try {
+            const ok = await client.messageDelete(chunk.join(','), { uid: true });
+            if (ok === false) failed += chunk.length;
+            else removed += chunk.length;
+          } catch (_) {
+            failed += chunk.length;
+          }
+        }
+        return { removed, failed, total: uids.length };
       })
     );
   }

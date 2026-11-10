@@ -331,6 +331,36 @@ router.post('/bulk-delete', requireAuth, requireCapability('edit'), async (req, 
     const all = String(req.body.all || '') === '1';
     const ids = toIntArray(req.body.ids);
 
+    const provider = await getMailboxProvider();
+    const configured = await provider.isConfigured();
+
+    // "Delete all" with no active search wipes the ENTIRE folder on the server —
+    // not just the rows we happen to have cached/shown. Otherwise a full mailbox
+    // appears "stuck" because only the handful of cached messages get removed.
+    if (all && !q && configured && typeof provider.purgeFolder === 'function') {
+      let result = { removed: 0, failed: 0 };
+      try {
+        result = await provider.purgeFolder(folder);
+      } catch (err) {
+        req.flash('error', `Could not clear ${folder}: ${err.message}`);
+        return res.redirect(backTo(req));
+      }
+
+      const countRow = await db.one(
+        'SELECT COUNT(*) AS c FROM mail_messages WHERE account = ? AND folder = ?',
+        [ACCOUNT, folder]
+      );
+      await db.query('DELETE FROM mail_messages WHERE account = ? AND folder = ?', [ACCOUNT, folder]);
+      const cached = countRow ? countRow.c : 0;
+
+      if (result.failed) {
+        req.flash('warn', `Deleted ${result.removed} of ${result.total} message(s) from ${folder}; ${result.failed} could not be removed on the server. Cleared ${cached} cached row(s).`);
+      } else {
+        req.flash('success', `Deleted ${result.removed} message(s) from ${folder}. Cleared ${cached} cached row(s).`);
+      }
+      return res.redirect(backTo(req));
+    }
+
     let messages = [];
     if (all) {
       let sql = 'SELECT id, uid, folder FROM mail_messages WHERE account = ? AND folder = ?';
@@ -353,9 +383,6 @@ router.post('/bulk-delete', requireAuth, requireCapability('edit'), async (req, 
       req.flash('error', 'Select at least one message first.');
       return res.redirect(backTo(req));
     }
-
-    const provider = await getMailboxProvider();
-    const configured = await provider.isConfigured();
 
     let serverFailed = 0;
     if (configured) {

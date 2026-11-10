@@ -27,6 +27,13 @@ const env = {
   appKey: process.env.APP_KEY || '',
   sessionSecret: process.env.SESSION_SECRET || process.env.APP_KEY || 'insecure-dev-session-secret',
 
+  // Bumped per deploy so browsers never serve a stale cached bundle. Railway
+  // injects RAILWAY_GIT_COMMIT_SHA; the start-time fallback busts on restart.
+  assetVersion:
+    process.env.RAILWAY_GIT_COMMIT_SHA ||
+    process.env.SOURCE_VERSION ||
+    String(Date.now()),
+
   db: {
     url: process.env.DATABASE_URL || process.env.MYSQL_URL || '',
     host: process.env.DB_HOST || process.env.MYSQLHOST || '127.0.0.1',

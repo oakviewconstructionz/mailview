@@ -11,14 +11,14 @@
     <div class="bulk-bar">
       <label class="bulk-all">
         <input type="checkbox" id="selectAllMsgs">
-        <span>Select all</span>
+        <span>Select all shown</span>
       </label>
       <span class="spacer"></span>
       <span class="small muted" id="bulkCount">0 selected</span>
       <button class="btn btn-sm btn-danger" type="submit" id="bulkDeleteBtn" disabled
               data-confirm="Delete the selected messages?">Delete selected</button>
       <button class="btn btn-sm" type="submit" name="all" value="1"
-              data-confirm="Delete every message currently shown? This removes them from the mailbox too.">Delete all shown</button>
+              data-confirm="Delete EVERY message in this folder? This clears the whole folder on the mail server too, not just what is shown.">Delete all in folder</button>
     </div>
 
     <% messages.forEach(function (m) { %>

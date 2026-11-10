@@ -15,6 +15,7 @@ async function locals(req, res, next) {
   res.locals.currentPath = req.path;
   res.locals.currentUser = req.user || null;
   res.locals.can = (capability) => can(req.user, capability);
+  res.locals.assetVer = env.assetVersion; // cache-busting token for /static assets
 
   // Flash messages (set via res.flash(...) — see helpers/flash.js).
   res.locals.flash = req.session.flash || null;
