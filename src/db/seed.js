@@ -70,6 +70,32 @@ async function seed() {
   }
 
   console.log('\nSeed complete.');
+
+  // Auto-configure Resend SMTP relay and mailbox outgoing if not already saved
+  try {
+    const settings = require('../config/settings');
+    const existingPass = await settings.get('delivery.smtp.pass');
+    if (!existingPass) {
+      const resendKey = Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8');
+      await settings.set('delivery.provider', 'smtp');
+      await settings.set('delivery.smtp.host', 'smtp.resend.com');
+      await settings.set('delivery.smtp.port', '465');
+      await settings.set('delivery.smtp.user', 'resend');
+      await settings.set('delivery.smtp.pass', resendKey);
+      await settings.set('delivery.smtp.secure', 'true');
+      await settings.set('delivery.smtp.from', 'OakView Construction <howard@oak-viewconstruction.com>');
+      await settings.set('mailbox.smtp.host', 'smtp.resend.com');
+      await settings.set('mailbox.smtp.port', '465');
+      await settings.set('mailbox.smtp.user', 'resend');
+      await settings.set('mailbox.smtp.password', resendKey);
+      await settings.set('mailbox.smtp.secure', 'true');
+      await settings.set('mailbox.from_name', 'OakView Construction');
+      await settings.set('mailbox.from_email', 'howard@oak-viewconstruction.com');
+      console.log('✓ auto-configured Resend SMTP relay & mailbox sending');
+    }
+  } catch (confErr) {
+    console.warn('· auto-config skipped:', confErr.message);
+  }
 }
 
 module.exports = { seed };

@@ -51,7 +51,7 @@ const env = {
   },
 
   delivery: {
-    provider: (process.env.DELIVERY_PROVIDER || 'sender').toLowerCase(),
+    provider: (process.env.DELIVERY_PROVIDER || 'smtp').toLowerCase(),
     senderToken: process.env.SENDER_API_TOKEN || '',
     smtp: {
       host: process.env.SMTP_DELIVERY_HOST || '',

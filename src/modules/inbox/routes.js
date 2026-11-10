@@ -538,7 +538,7 @@ router.get('/compose', requireAuth, requireCapability('send'), async (req, res, 
   }
 });
 
-router.post('/compose', requireAuth, requireCapability('send'), upload.array('attachments', 8), async (req, res, next) => {
+const handleComposePost = async (req, res, next) => {
   const to = String(req.body.to || '').trim();
   const cc = String(req.body.cc || '').trim();
   const bcc = String(req.body.bcc || '').trim();
@@ -582,7 +582,10 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
     const validTo = recipients.filter(h.isValidEmail);
     const invalid = recipients.filter((e) => !h.isValidEmail(e));
     if (!validTo.length) return rerender('Add at least one valid recipient.');
-    if (invalid.length) return rerender(`These addresses look invalid: ${invalid.join(', ')}.`);
+    if (invalid.length) {
+      const hint = invalid.some((e) => /@\.com$/i.test(e)) ? ' (Did you mean @gmail.com?)' : '';
+      return rerender(`These addresses look invalid: ${invalid.join(', ')}.${hint}`);
+    }
     if (!subject) return rerender('Add a subject.');
     if (!body.trim() && !html) return rerender('Add a message.');
 
@@ -747,7 +750,10 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
   } catch (err) {
     return next(err);
   }
-});
+};
+
+router.post('/compose', requireAuth, requireCapability('send'), upload.array('attachments', 8), handleComposePost);
+router.post('/send', requireAuth, requireCapability('send'), upload.array('attachments', 8), handleComposePost);
 
 /* ------------------------------------------------------------------ settings */
 

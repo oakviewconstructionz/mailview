@@ -115,6 +115,11 @@ function createApp() {
   app.use('/t', require('./modules/tracking/routes'));          // open/click/unsubscribe (public)
   app.use('/auth', require('./modules/auth/routes'));           // login/logout/reset
   app.use('/', require('./modules/dashboard/routes'));          // dashboard (auth-guarded inside)
+  app.get('/compose', (req, res) => res.redirect('/inbox/compose'));
+  app.post('/compose', (req, res, next) => {
+    req.url = '/compose';
+    return require('./modules/inbox/routes')(req, res, next);
+  });
   app.use('/inbox', require('./modules/inbox/routes'));
   app.use('/contacts', require('./modules/subscribers/routes'));
   app.use('/lists', require('./modules/subscribers/listRoutes'));

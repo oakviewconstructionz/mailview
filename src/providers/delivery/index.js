@@ -14,24 +14,22 @@ const sender = require('./sender');
 const smtp = require('./smtp');
 
 const PROVIDERS = {
-  sender,
   smtp,
+  sender,
 };
 
 const LABELS = {
+  smtp: 'SMTP relay (Resend)',
   sender: 'Sender.net',
-  smtp: 'SMTP relay',
 };
 
 async function activeName() {
-  const name = (await settings.get('delivery.provider')) || 'sender';
-  const selected = PROVIDERS[name] ? name : 'sender';
+  const name = (await settings.get('delivery.provider')) || 'smtp';
+  const selected = PROVIDERS[name] ? name : 'smtp';
   // Keep the explicitly-selected provider when it is actually configured.
   if (await PROVIDERS[selected].isConfigured()) return selected;
-  // Otherwise fall back to the other provider if that one is configured, so a
-  // ready integration is used instead of an unconfigured default.
-  const other = selected === 'smtp' ? 'sender' : 'smtp';
-  if (await PROVIDERS[other].isConfigured()) return other;
+  // Otherwise fall back to smtp if configured
+  if (await PROVIDERS.smtp.isConfigured()) return 'smtp';
   return selected;
 }
 
@@ -42,7 +40,7 @@ async function getDeliveryProvider(nameOverride) {
     }
   }
   const name = await activeName();
-  return PROVIDERS[name] || PROVIDERS.smtp || sender;
+  return PROVIDERS[name] || PROVIDERS.smtp || smtp;
 }
 
 /** Human label used only inside admin settings (never the client UI). */

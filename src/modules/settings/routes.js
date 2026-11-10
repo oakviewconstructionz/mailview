@@ -18,7 +18,7 @@ const { getMailboxProvider } = require('../../providers/mailbox');
 const router = express.Router();
 
 // Which registry groups belong to each top-level panel.
-const DELIVERY_GROUPS = ['delivery', 'sender', 'smtp_delivery'];
+const DELIVERY_GROUPS = ['delivery', 'smtp_delivery'];
 const MAILBOX_GROUPS = ['mailbox', 'imap', 'mailbox_smtp', 'mailbox_identity'];
 
 const GROUP_TITLES = {
