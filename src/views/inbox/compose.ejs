@@ -49,8 +49,8 @@
     <input type="hidden" name="templateId" id="templateId" value="<%= draft.templateId || '' %>">
 
     <div class="field">
-      <label for="to">To <span class="muted">(recipient email)</span></label>
-      <input class="input" id="to" name="to" type="text" value="<%= draft.to %>" placeholder="recipient@example.com" required autocomplete="email">
+      <label for="to">To <span class="muted">(recipient email, or leave blank to send to Bcc only)</span></label>
+      <input class="input" id="to" name="to" type="text" value="<%= draft.to %>" placeholder="recipient@example.com (optional if using Bcc)" autocomplete="email">
     </div>
 
     <div class="row" style="gap:12px;">
@@ -99,6 +99,14 @@
         input.value = input.value.replace(/@\.com\b/gi, '@gmail.com').replace(/@com\b/gi, '@gmail.com');
       }
     });
+    var toVal = (document.getElementById('to').value || '').trim();
+    var ccVal = (document.getElementById('cc').value || '').trim();
+    var bccVal = (document.getElementById('bcc').value || '').trim();
+    if (!toVal && !ccVal && !bccVal) {
+      e.preventDefault();
+      alert('Please add at least one recipient email address (in To, Cc, or Bcc).');
+      return;
+    }
     var btn = document.getElementById('sendBtn');
     if (btn) {
       btn.disabled = true;

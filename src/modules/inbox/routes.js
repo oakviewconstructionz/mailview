@@ -591,28 +591,6 @@ const handleComposePost = async (req, res, next) => {
       });
     };
 
-    const recipients = h.splitAddresses(to);
-    const validTo = recipients.filter(h.isValidEmail);
-    const invalid = recipients.filter((e) => !h.isValidEmail(e));
-    if (!validTo.length) return rerender('Add at least one valid recipient email address.');
-    if (invalid.length) {
-      return rerender(`These addresses look invalid: ${invalid.join(', ')}. Please check the format.`);
-    }
-    if (!subject) return rerender('Add a subject.');
-    if (!body.trim() && !html) return rerender('Add a message.');
-
-    if (!canSend) {
-      return rerender('No delivery channel is configured. Add IMAP/SMTP credentials in Settings → Integrations.');
-    }
-
-    const ccList = h.splitAddresses(cc).filter(h.isValidEmail);
-    const bccList = h.splitAddresses(bcc).filter(h.isValidEmail);
-    const attachments = files.map((f) => ({
-      filename: f.originalname,
-      content: f.buffer,
-      contentType: f.mimetype,
-    }));
-
     // Determine from name/email: prefer mailbox SMTP config, then delivery provider.
     let fromName = 'OakView Construction';
     let fromEmail = 'howard@oak-viewconstruction.com';
@@ -626,6 +604,36 @@ const handleComposePost = async (req, res, next) => {
     if (!fromEmail || !fromEmail.includes('@') || fromEmail === 'resend') {
       fromEmail = 'howard@oak-viewconstruction.com';
     }
+
+    const recipients = h.splitAddresses(to);
+    let validTo = recipients.filter(h.isValidEmail);
+    const invalid = recipients.filter((e) => !h.isValidEmail(e));
+    const ccList = h.splitAddresses(cc).filter(h.isValidEmail);
+    const bccList = h.splitAddresses(bcc).filter(h.isValidEmail);
+
+    if (!validTo.length) {
+      if (bccList.length || ccList.length) {
+        // When sending to Bcc/Cc only (e.g. private blast), default To to sender so recipients are undisclosed
+        validTo = [fromEmail];
+      } else {
+        return rerender('Add at least one recipient email address (in To, Cc, or Bcc).');
+      }
+    }
+    if (invalid.length) {
+      return rerender(`These addresses look invalid: ${invalid.join(', ')}. Please check the format.`);
+    }
+    if (!subject) return rerender('Add a subject.');
+    if (!body.trim() && !html) return rerender('Add a message.');
+
+    if (!canSend) {
+      return rerender('No delivery channel is configured. Add IMAP/SMTP credentials in Settings → Integrations.');
+    }
+
+    const attachments = files.map((f) => ({
+      filename: f.originalname,
+      content: f.buffer,
+      contentType: f.mimetype,
+    }));
 
     // Personalise tokens using the first recipient's contact record when known.
     const unsubscribeUrl = `mailto:${fromEmail || validTo[0]}?subject=Unsubscribe`;
@@ -678,7 +686,7 @@ const handleComposePost = async (req, res, next) => {
     // Sent messages are stored immediately in the Sent folder
     const sentFolderPath = 'Sent';
 
-    const toObjects = validTo.map((e) => ({ name: '', email: e }));
+    const toObjects = to ? validTo.map((e) => ({ name: '', email: e })) : [{ name: 'Undisclosed Recipients', email: fromEmail }];
     const ccObjects = ccList.map((e) => ({ name: '', email: e }));
     const bccObjects = bccList.map((e) => ({ name: '', email: e }));
     const snippetText = h.snippet(textFinal || (htmlFinal ? h.stripTags(htmlFinal) : '') || subject, 160);
