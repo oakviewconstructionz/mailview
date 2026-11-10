@@ -178,9 +178,11 @@ router.post('/test/:kind', requireAuth, requireRole('admin'), async (req, res, n
   try {
     let result;
     if (kind === 'delivery') {
-      result = await getDeliveryProvider().verify();
+      const provider = await getDeliveryProvider();
+      result = await provider.verify();
     } else if (kind === 'mailbox') {
-      result = await getMailboxProvider().verify();
+      const provider = await getMailboxProvider();
+      result = await provider.verify();
     } else {
       req.flash('error', 'Unknown connection type.');
       return res.redirect('/settings');
