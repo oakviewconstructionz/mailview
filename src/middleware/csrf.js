@@ -10,7 +10,7 @@ const crypto = require('crypto');
  * one-click unsubscribe) are token-authenticated separately and are exempt.
  */
 
-const EXEMPT_PREFIXES = ['/t/'];
+const EXEMPT_PREFIXES = ['/t/', '/api/webhooks/'];
 
 function csrfProtection(req, res, next) {
   if (!req.session.csrfToken) {

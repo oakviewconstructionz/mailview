@@ -112,6 +112,7 @@ function createApp() {
   app.get('/healthz', (req, res) => res.json({ ok: true, name: env.appName, time: new Date().toISOString() }));
 
   // --- Routes ---------------------------------------------------------------
+  app.use('/api/webhooks', require('./modules/webhooks/routes')); // Resend inbound webhooks (public)
   app.use('/t', require('./modules/tracking/routes'));          // open/click/unsubscribe (public)
   app.use('/auth', require('./modules/auth/routes'));           // login/logout/reset
   app.use('/', require('./modules/dashboard/routes'));          // dashboard (auth-guarded inside)
