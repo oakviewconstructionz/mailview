@@ -180,12 +180,23 @@ router.post('/test/:kind', requireAuth, requireRole('admin'), async (req, res, n
   const kind = req.params.kind;
   try {
     let result;
+    // Wrap the whole test in a 25-second guard so the route always responds
+    // even when the IMAP/SMTP server is totally unreachable (Railway would
+    // otherwise show its own "Application failed to respond" crash page).
+    const withTimeout = (p, ms) =>
+      Promise.race([
+        p,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Connection test timed out after ${ms / 1000}s — the server may be unreachable.`)), ms)
+        ),
+      ]);
+
     if (kind === 'delivery') {
       const provider = await getDeliveryProvider();
-      result = await provider.verify();
+      result = await withTimeout(provider.verify(), 25000);
     } else if (kind === 'mailbox') {
       const provider = await getMailboxProvider();
-      result = await provider.verify();
+      result = await withTimeout(provider.verify(), 25000);
     } else {
       req.flash('error', 'Unknown connection type.');
       return res.redirect('/settings');

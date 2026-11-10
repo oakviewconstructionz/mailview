@@ -64,23 +64,56 @@ class ImapMailboxProvider {
 
   async verify() {
     const checks = [];
+    const cfg = await this.imapConfig();
+
+    // Wrap the entire verify in a master 20-second timeout so a slow/unreachable
+    // server never hangs the HTTP request (which would show Railway's crash page).
+    const withTimeout = (promise, ms, label) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`${label} connection timed out after ${ms / 1000}s`)), ms)
+        ),
+      ]);
 
     // Incoming mail — required.
-    try {
-      const cfg = await this.imapConfig();
-      const client = new ImapFlow({
-        host: cfg.host,
-        port: cfg.port,
-        secure: cfg.secure,
-        auth: { user: cfg.user, pass: cfg.pass },
-        logger: false,
-      });
-      await client.connect();
-      const boxes = await client.list();
-      await client.logout();
-      checks.push({ label: 'IMAP', ok: true, required: true, message: `${boxes.length} folder(s) available.` });
-    } catch (err) {
-      checks.push({ label: 'IMAP', ok: false, required: true, message: err.message });
+    if (cfg.host && cfg.user && cfg.pass) {
+      try {
+        const client = new ImapFlow({
+          host: cfg.host,
+          port: cfg.port,
+          secure: cfg.secure,
+          auth: { user: cfg.user, pass: cfg.pass },
+          logger: false,
+          tls: { rejectUnauthorized: false },
+          greetingTimeout: 12000,
+          socketTimeout: 20000,
+        });
+        await withTimeout(
+          client.connect().then(async () => {
+            const boxes = await client.list();
+            await client.logout();
+            return boxes;
+          }),
+          20000,
+          'IMAP'
+        ).then((boxes) => {
+          checks.push({ label: 'IMAP', ok: true, required: true, message: `${boxes.length} folder(s) available.` });
+        });
+      } catch (err) {
+        const msg = err.message || '';
+        let detail = msg;
+        if (msg.includes('AUTHENTICATIONFAILED') || msg.includes('Invalid credentials') || msg.includes('login failed')) {
+          detail = cfg.host.includes('gmail')
+            ? 'Gmail authentication failed. Use an App Password (Google Account → Security → 2-Step Verification → App passwords).'
+            : `IMAP login failed for ${cfg.user}: check your username and password.`;
+        } else if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+          detail = `Could not reach ${cfg.host}:${cfg.port} (${err.code}).`;
+        }
+        checks.push({ label: 'IMAP', ok: false, required: true, message: detail });
+      }
+    } else {
+      checks.push({ label: 'IMAP', ok: false, required: true, message: 'IMAP credentials not fully configured (host, user and password required).' });
     }
 
     // Outgoing mail — checked only when an SMTP host is configured.
@@ -88,7 +121,7 @@ class ImapMailboxProvider {
     if (smtp.host) {
       try {
         const transport = await this.smtpTransport();
-        await transport.verify();
+        await withTimeout(transport.verify(), 15000, 'SMTP');
         checks.push({ label: 'SMTP', ok: true, required: true, message: `${smtp.host}:${smtp.port} accepted the connection.` });
       } catch (err) {
         checks.push({ label: 'SMTP', ok: false, required: true, message: err.message });
