@@ -357,26 +357,40 @@ router.post('/bulk-delete', requireAuth, requireCapability('edit'), async (req, 
     const provider = await getMailboxProvider();
     const configured = await provider.isConfigured();
 
-    let removed = 0;
     let serverFailed = 0;
-    for (const m of messages) {
-      if (configured) {
+    if (configured) {
+      // Batch by folder so each folder is purged in a single IMAP session.
+      const byFolder = {};
+      for (const m of messages) {
+        if (m.uid == null) continue;
+        (byFolder[m.folder] = byFolder[m.folder] || []).push(m.uid);
+      }
+      for (const [f, uids] of Object.entries(byFolder)) {
         try {
-          await provider.remove(m.folder, m.uid);
+          if (typeof provider.removeMany === 'function') {
+            const r = await provider.removeMany(f, uids);
+            serverFailed += (r && r.failed) || 0;
+          } else {
+            for (const u of uids) await provider.remove(f, u);
+          }
         } catch (_) {
-          serverFailed += 1;
+          serverFailed += uids.length;
         }
       }
-      await db.query('DELETE FROM mail_messages WHERE id = ?', [m.id]);
-      removed += 1;
     }
+
+    // Always clear our local cache rows for the selection.
+    const rowIds = messages.map((m) => m.id);
+    const inList = rowIds.map(() => '?').join(',');
+    await db.query(`DELETE FROM mail_messages WHERE account = ? AND id IN (${inList})`, [ACCOUNT].concat(rowIds));
+    const removed = rowIds.length;
 
     if (!configured) {
       req.flash('success', `Removed ${removed} message(s) from the list. Mailbox is not connected, so server copies are untouched.`);
     } else if (serverFailed) {
-      req.flash('success', `Deleted ${removed} message(s); ${serverFailed} could not be removed from the server.`);
+      req.flash('warn', `Removed ${removed} message(s) here, but ${serverFailed} could not be deleted on the mail server and may reappear on the next sync.`);
     } else {
-      req.flash('success', `Deleted ${removed} message(s).`);
+      req.flash('success', `Deleted ${removed} message(s) from the mailbox.`);
     }
     return res.redirect(backTo(req));
   } catch (err) {

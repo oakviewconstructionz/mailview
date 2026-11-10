@@ -258,6 +258,31 @@ class ImapMailboxProvider {
     );
   }
 
+  /**
+   * Deletes many messages from one folder in a single IMAP session. Opening a
+   * fresh connection per message (as the single-message path does) is far too
+   * slow for a folder-wide purge and gets throttled by providers like Gmail.
+   * Returns how many the server confirmed removed, so callers can report the
+   * truth instead of assuming success.
+   */
+  async removeMany(folder, uids) {
+    const list = (uids || [])
+      .map((u) => String(u))
+      .filter((u) => u && u !== 'null' && u !== 'undefined');
+    if (!list.length) return { removed: 0, failed: 0 };
+
+    return this.withClient(async (client) =>
+      this.withMailbox(client, folder, async () => {
+        try {
+          const ok = await client.messageDelete(list.join(','), { uid: true });
+          return ok === false ? { removed: 0, failed: list.length } : { removed: list.length, failed: 0 };
+        } catch (err) {
+          return { removed: 0, failed: list.length, error: err.message };
+        }
+      })
+    );
+  }
+
   /** Appends a raw RFC822 message to a folder (used to store Sent / Drafts). */
   async append(folder, raw, flags = []) {
     return this.withClient(async (client) => {
