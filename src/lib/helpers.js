@@ -79,14 +79,35 @@ function parseAddress(input) {
 }
 
 function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+  if (!email) return false;
+  const parsed = parseAddress(email);
+  const target = parsed.email || email;
+  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(String(target || '').trim());
 }
 
-function splitAddresses(input) {
-  return String(input || '')
+function parseEmailList(input) {
+  if (!input) return [];
+  const items = String(input)
+    .replace(/@\.com\b/gi, '@gmail.com')
+    .replace(/@com\b/gi, '@gmail.com')
     .split(/[,;\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
+
+  const valid = [];
+  for (const item of items) {
+    const match = item.match(/<([^>]+)>/);
+    const candidate = match ? match[1].trim() : item;
+    const direct = candidate.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (direct && isValidEmail(direct[0])) {
+      valid.push(direct[0].toLowerCase());
+    }
+  }
+  return valid;
+}
+
+function splitAddresses(input) {
+  return parseEmailList(input);
 }
 
 /**
@@ -149,6 +170,7 @@ module.exports = {
   percent,
   initials,
   parseAddress,
+  parseEmailList,
   isValidEmail,
   splitAddresses,
   personalise,

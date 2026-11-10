@@ -93,11 +93,12 @@
   if (!form) return;
 
   form.addEventListener('submit', function (e) {
-    var toInput = document.getElementById('to');
-    if (toInput && toInput.value) {
-      // Auto-correct accidental typo like user@.com -> user@gmail.com
-      toInput.value = toInput.value.replace(/@\.com\b/gi, '@gmail.com').replace(/@com\b/gi, '@gmail.com');
-    }
+    ['to', 'cc', 'bcc'].forEach(function (id) {
+      var input = document.getElementById(id);
+      if (input && input.value) {
+        input.value = input.value.replace(/@\.com\b/gi, '@gmail.com').replace(/@com\b/gi, '@gmail.com');
+      }
+    });
     var btn = document.getElementById('sendBtn');
     if (btn) {
       btn.disabled = true;
