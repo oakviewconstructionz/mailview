@@ -22,6 +22,12 @@ function wantsJson(req) {
   return Boolean(req.xhr) || (req.get('accept') || '').includes('application/json');
 }
 
+/** Parses an id list from a request body (single value or array). */
+function toIntArray(value) {
+  const arr = Array.isArray(value) ? value : (value == null ? [] : [value]);
+  return arr.map((v) => parseInt(v, 10)).filter((n) => Number.isInteger(n) && n > 0);
+}
+
 /** Redirect target: back to the referring inbox URL, or /inbox. */
 function backTo(req, fallback = '/inbox') {
   const ref = req.get('referer');
@@ -310,6 +316,68 @@ router.post('/:id/delete', requireAuth, requireCapability('edit'), async (req, r
 
     await db.query('DELETE FROM mail_messages WHERE id = ?', [id]);
     req.flash('success', 'Message deleted.');
+    return res.redirect(backTo(req));
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* ---------------------------------------------------------------- bulk delete */
+
+router.post('/bulk-delete', requireAuth, requireCapability('edit'), async (req, res, next) => {
+  try {
+    const folder = String(req.body.folder || 'INBOX');
+    const q = String(req.body.q || '');
+    const all = String(req.body.all || '') === '1';
+    const ids = toIntArray(req.body.ids);
+
+    let messages = [];
+    if (all) {
+      let sql = 'SELECT id, uid, folder FROM mail_messages WHERE account = ? AND folder = ?';
+      const params = [ACCOUNT, folder];
+      if (q) {
+        sql += ' AND (subject LIKE ? OR from_email LIKE ? OR from_name LIKE ? OR snippet LIKE ?)';
+        const like = `%${q}%`;
+        params.push(like, like, like, like);
+      }
+      messages = await db.query(sql, params);
+    } else if (ids.length) {
+      const inList = ids.map(() => '?').join(',');
+      messages = await db.query(
+        `SELECT id, uid, folder FROM mail_messages WHERE account = ? AND id IN (${inList})`,
+        [ACCOUNT].concat(ids)
+      );
+    }
+
+    if (!messages.length) {
+      req.flash('error', 'Select at least one message first.');
+      return res.redirect(backTo(req));
+    }
+
+    const provider = await getMailboxProvider();
+    const configured = await provider.isConfigured();
+
+    let removed = 0;
+    let serverFailed = 0;
+    for (const m of messages) {
+      if (configured) {
+        try {
+          await provider.remove(m.folder, m.uid);
+        } catch (_) {
+          serverFailed += 1;
+        }
+      }
+      await db.query('DELETE FROM mail_messages WHERE id = ?', [m.id]);
+      removed += 1;
+    }
+
+    if (!configured) {
+      req.flash('success', `Removed ${removed} message(s) from the list. Mailbox is not connected, so server copies are untouched.`);
+    } else if (serverFailed) {
+      req.flash('success', `Deleted ${removed} message(s); ${serverFailed} could not be removed from the server.`);
+    } else {
+      req.flash('success', `Deleted ${removed} message(s).`);
+    }
     return res.redirect(backTo(req));
   } catch (err) {
     return next(err);

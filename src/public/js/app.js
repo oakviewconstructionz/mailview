@@ -73,6 +73,34 @@
     el.addEventListener('change', function () { el.form && el.form.requestSubmit(); });
   });
 
+  // Inbox: bulk message selection (select-all, live count, enable delete)
+  var bulkForm = document.getElementById('inboxBulkForm');
+  if (bulkForm) {
+    var boxes = Array.prototype.slice.call(bulkForm.querySelectorAll('.msg-check'));
+    var selectAll = document.getElementById('selectAllMsgs');
+    var countEl = document.getElementById('bulkCount');
+    var deleteBtn = document.getElementById('bulkDeleteBtn');
+
+    var syncBulk = function () {
+      var n = boxes.filter(function (c) { return c.checked; }).length;
+      if (countEl) countEl.textContent = n + ' selected';
+      if (deleteBtn) deleteBtn.disabled = n === 0;
+      if (selectAll) {
+        selectAll.checked = n > 0 && n === boxes.length;
+        selectAll.indeterminate = n > 0 && n < boxes.length;
+      }
+    };
+
+    boxes.forEach(function (c) { c.addEventListener('change', syncBulk); });
+    if (selectAll) {
+      selectAll.addEventListener('change', function () {
+        boxes.forEach(function (c) { c.checked = selectAll.checked; });
+        syncBulk();
+      });
+    }
+    syncBulk();
+  }
+
   // Copy a preview screen (test email helper): fill a hidden field from a select
   document.querySelectorAll('[data-fill]').forEach(function (el) {
     var source = document.querySelector(el.getAttribute('data-fill'));

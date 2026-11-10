@@ -3,26 +3,51 @@
     <%- include('../../partials/empty', { heading: 'No messages', message: 'Nothing matches this folder or search.' }) %>
   </div>
 <% } else { %>
-  <% messages.forEach(function (m) { %>
-    <%
-      var link = '/inbox?folder=' + encodeURIComponent(folder) + '&message=' + m.id + (q ? '&q=' + encodeURIComponent(q) : '');
-    %>
-    <a class="msg-row <%= m.is_read ? '' : 'unread' %> <%= (selected && selected.id === m.id) ? 'active' : '' %>" href="<%= link %>">
-      <div class="row between">
-        <span class="msg-from"><%= m.from_name || m.from_email || '(unknown sender)' %></span>
-        <span class="msg-meta"><%= h.timeAgo(m.received_at || m.sent_at || m.synced_at) %></span>
+  <form method="post" action="/inbox/bulk-delete" id="inboxBulkForm">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="folder" value="<%= folder %>">
+    <input type="hidden" name="q" value="<%= q || '' %>">
+
+    <div class="bulk-bar">
+      <label class="bulk-all">
+        <input type="checkbox" id="selectAllMsgs">
+        <span>Select all</span>
+      </label>
+      <span class="spacer"></span>
+      <span class="small muted" id="bulkCount">0 selected</span>
+      <button class="btn btn-sm btn-danger" type="submit" id="bulkDeleteBtn" disabled
+              data-confirm="Delete the selected messages?">Delete selected</button>
+      <button class="btn btn-sm" type="submit" name="all" value="1"
+              data-confirm="Delete every message currently shown? This removes them from the mailbox too.">Delete all shown</button>
+    </div>
+
+    <% messages.forEach(function (m) { %>
+      <%
+        var link = '/inbox?folder=' + encodeURIComponent(folder) + '&message=' + m.id + (q ? '&q=' + encodeURIComponent(q) : '');
+        var isActive = (selected && selected.id === m.id);
+      %>
+      <div class="msg-item <%= m.is_read ? '' : 'unread' %> <%= isActive ? 'active' : '' %>">
+        <label class="msg-pick" title="Select message">
+          <input type="checkbox" name="ids" value="<%= m.id %>" class="msg-check">
+        </label>
+        <a class="msg-row" href="<%= link %>">
+          <div class="row between">
+            <span class="msg-from"><%= m.from_name || m.from_email || '(unknown sender)' %></span>
+            <span class="msg-meta"><%= h.timeAgo(m.received_at || m.sent_at || m.synced_at) %></span>
+          </div>
+          <div class="msg-subject"><%= m.subject || '(no subject)' %></div>
+          <div class="msg-snippet"><%= m.snippet || '' %></div>
+          <div class="msg-meta">
+            <% if (!m.is_read) { %><span class="badge badge-blue"><span class="badge-dot"></span>unread</span><% } %>
+            <% if (m.is_starred) { %>
+              <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;color:#e0a72b;"><path d="m12 17.3-6.2 3.7 1.6-7-5.4-4.7 7.1-.6L12 2l2.9 6.7 7.1.6-5.4 4.7 1.6 7z"/></svg>
+            <% } %>
+            <% if (m.has_attachments) { %>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M21.4 11.05 12.25 20.2a6 6 0 0 1-8.49-8.49l9.2-9.2a4 4 0 0 1 5.65 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <% } %>
+          </div>
+        </a>
       </div>
-      <div class="msg-subject"><%= m.subject || '(no subject)' %></div>
-      <div class="msg-snippet"><%= m.snippet || '' %></div>
-      <div class="msg-meta">
-        <% if (!m.is_read) { %><span class="badge badge-blue"><span class="badge-dot"></span>unread</span><% } %>
-        <% if (m.is_starred) { %>
-          <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;color:#e0a72b;"><path d="m12 17.3-6.2 3.7 1.6-7-5.4-4.7 7.1-.6L12 2l2.9 6.7 7.1.6-5.4 4.7 1.6 7z"/></svg>
-        <% } %>
-        <% if (m.has_attachments) { %>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M21.4 11.05 12.25 20.2a6 6 0 0 1-8.49-8.49l9.2-9.2a4 4 0 0 1 5.65 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-        <% } %>
-      </div>
-    </a>
-  <% }); %>
+    <% }); %>
+  </form>
 <% } %>
