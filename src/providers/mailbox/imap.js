@@ -483,22 +483,28 @@ class ImapMailboxProvider {
     });
   }
 
+  extractCleanEmail(str) {
+    if (!str) return 'howard@oak-viewconstruction.com';
+    const match = String(str).match(/<([^>]+)>/);
+    if (match && match[1] && match[1].includes('@')) return match[1].trim();
+    const directMatch = String(str).match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (directMatch) return directMatch[0].trim();
+    return 'howard@oak-viewconstruction.com';
+  }
+
   async send({ to, cc, bcc, subject, text, html, attachments, inReplyTo, references, fromName, fromEmail }) {
     const cfg = await this.smtpConfig();
     const transport = await this.smtpTransport();
 
     const fromNameFinal = fromName || cfg.fromName || 'OakView Construction';
-    let fromEmailFinal = fromEmail || cfg.fromEmail;
-    if (!fromEmailFinal || !fromEmailFinal.includes('@') || fromEmailFinal === 'resend') {
-      fromEmailFinal = 'howard@oak-viewconstruction.com';
-    }
+    const cleanEmail = this.extractCleanEmail(fromEmail || cfg.fromEmail);
     const headers = {};
     if (inReplyTo) headers['In-Reply-To'] = inReplyTo;
     if (references) headers['References'] = references;
 
     try {
       const info = await transport.sendMail({
-        from: `"${fromNameFinal}" <${fromEmailFinal}>`,
+        from: `"${fromNameFinal}" <${cleanEmail}>`,
         to,
         cc: cc || undefined,
         bcc: bcc || undefined,

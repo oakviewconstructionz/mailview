@@ -652,7 +652,6 @@ const handleComposePost = async (req, res, next) => {
     let smtpErr = null;
 
     if (smtpReady) {
-      // Primary path: send via IMAP/SMTP mailbox provider when credentials are fully provided.
       try {
         result = await provider.send({
           to: validTo.join(', '),
@@ -664,37 +663,16 @@ const handleComposePost = async (req, res, next) => {
           inReplyTo,
           references,
           attachments,
+          fromName,
+          fromEmail,
         });
       } catch (err) {
         smtpErr = err;
       }
     }
 
-    // Fallback or primary Sender.net path: when SMTP is not configured or failed
-    if (!result && senderConfigured) {
-      if (files.length) {
-        req.flash('warn', 'Attachments are not supported when sending via Sender.net. The message was sent without them.');
-      }
-      try {
-        result = await deliveryProvider.sendMessage({
-          to: validTo,
-          subject,
-          html: htmlFinal || undefined,
-          text: textFinal,
-          fromName,
-          fromEmail,
-          replyTo: fromEmail,
-        });
-      } catch (senderErr) {
-        if (smtpErr) {
-          return rerender(`Send failed: SMTP rejected (${smtpErr.message}) and Sender.net rejected (${senderErr.message})`);
-        }
-        return rerender(`Send failed: ${senderErr.message}`);
-      }
-    } else if (!result && smtpErr) {
-      return rerender(`Send failed via SMTP: ${smtpErr.message}`);
-    } else if (!result) {
-      return rerender('No email sending service is ready. Add your SMTP credentials (host, username, password) or a working Sender.net API token in Settings → Integrations.');
+    if (!result) {
+      return rerender(`Send failed via SMTP: ${smtpErr ? smtpErr.message : 'No SMTP relay configured.'}`);
     }
 
     // Sent messages are stored immediately in the Sent folder

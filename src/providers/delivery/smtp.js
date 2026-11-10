@@ -92,14 +92,19 @@ class SmtpDeliveryProvider extends BaseDeliveryProvider {
   async sendMessage({ to, subject, html, text, from, replyTo, listUnsubscribe, headers, attachments }) {
     const c = await this.config();
     const t = await this.transporter();
+    const match = String(from || c.from || '').match(/<([^>]+)>/);
+    const cleanEmail = (match && match[1] && match[1].includes('@'))
+      ? match[1].trim()
+      : (String(from || c.from || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0] || 'howard@oak-viewconstruction.com');
+    const fromHeader = `"OakView Construction" <${cleanEmail}>`;
     try {
       const info = await t.sendMail({
-        from: from || c.from,
+        from: fromHeader,
         to,
         subject,
         html,
         text,
-        replyTo,
+        replyTo: replyTo || cleanEmail,
         attachments,
         headers: Object.assign(
           {},
