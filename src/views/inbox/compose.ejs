@@ -12,9 +12,9 @@
 
 <% if (!configured) { %>
   <div class="alert mb-3">
-    <strong>Mailbox not connected.</strong>
-    Sending is blocked until IMAP/SMTP credentials are added.
-    <a href="/settings">Open Settings → Integrations</a>. Nothing will be simulated.
+    <strong>No sending channel configured.</strong>
+    Add IMAP/SMTP credentials <em>or</em> a Sender.net API token in
+    <a href="/settings">Settings → Integrations</a>. Nothing will be sent until at least one is active.
   </div>
 <% } %>
 

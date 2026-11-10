@@ -197,18 +197,64 @@ class SenderDeliveryProvider extends BaseDeliveryProvider {
     };
   }
 
-  /** Transactional single message (used for "send a test email"). */
-  async sendMessage({ to, subject, html, text, from, replyTo }) {
-    const body = {
-      from: from,
-      to: to,
-      subject: subject,
-    };
-    if (html) body.html = html;
-    if (text) body.text = text;
-    if (replyTo) body.reply_to = replyTo;
-    const data = await this.request('POST', '/message/send', body);
-    return { providerMessageId: (data && (data.data && data.data.id || data.message_id)) || null, raw: data };
+  /**
+   * Transactional single message via Sender.net /message/send.
+   *
+   * Sender.net expects `from` and each recipient in `to` as objects of the
+   * form { email, name }. When a plain "Name <addr>" string is passed (from
+   * the mailbox/compose path) we parse it here so the caller doesn't have to
+   * know the difference.
+   */
+  async sendMessage({ to, subject, html, text, from, replyTo, fromName, fromEmail }) {
+    // Parse a "Name <email>" string into { name, email }.
+    function parseAddr(addr) {
+      if (addr && typeof addr === 'object') return addr;
+      const str = String(addr || '');
+      const m = str.match(/^(.*?)\s*<([^>]+)>$/);
+      if (m) return { name: m[1].replace(/^"|"$/g, '').trim(), email: m[2].trim() };
+      return { name: '', email: str.trim() };
+    }
+
+    // Build the from object.
+    let fromObj;
+    if (fromEmail) {
+      fromObj = { email: fromEmail, name: fromName || '' };
+    } else {
+      fromObj = parseAddr(from);
+    }
+
+    // Build the to array: Sender.net /message/send accepts a single recipient
+    // object in `to` or an array. We always use the first valid address.
+    const toAddresses = Array.isArray(to) ? to : String(to || '').split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    if (!toAddresses.length) {
+      throw new ProviderError('No recipient address provided', { provider: 'sender', status: 400, code: 'SENDER_NO_TO' });
+    }
+
+    // Sender.net transactional API takes one recipient per call.
+    // We iterate so cc/bcc are sent separately (best-effort).
+    const results = [];
+    for (const addr of toAddresses) {
+      const toObj = parseAddr(addr);
+      const body = {
+        from: fromObj,
+        to: toObj,
+        subject,
+      };
+      if (html) body.html = html;
+      if (text && !html) body.text = text;    // prefer html; include text only as fallback
+      if (text && html) body.text = text;     // include both when both provided
+      if (replyTo) body.reply_to = parseAddr(replyTo);
+
+      try {
+        const data = await this.request('POST', '/message/send', body);
+        results.push({ providerMessageId: (data && ((data.data && data.data.id) || data.message_id)) || null, raw: data });
+      } catch (err) {
+        // Surface first failure immediately if we failed on the primary recipient.
+        if (results.length === 0) throw err;
+        // Otherwise log and continue for Cc/Bcc-style extra recipients.
+      }
+    }
+    return results[0] || { providerMessageId: null, raw: null };
   }
 }
 

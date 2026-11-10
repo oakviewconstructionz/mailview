@@ -9,6 +9,7 @@ const db = require('../../config/db');
 const h = require('../../lib/helpers');
 const { requireAuth, requireCapability } = require('../../middleware/auth');
 const { getMailboxProvider } = require('../../providers/mailbox');
+const { getDeliveryProvider } = require('../../providers/delivery');
 const { defaultFolders, syncMessages, syncMessage, specialKey, ACCOUNT } = require('../../services/mailboxSync');
 
 const router = express.Router();
@@ -519,6 +520,9 @@ router.get('/compose', requireAuth, requireCapability('send'), async (req, res, 
 
     const provider = await getMailboxProvider();
     const opts = await composeOptions();
+    // canSend: true when IMAP/SMTP OR Sender.net is available for outgoing mail.
+    const deliveryProvider = await getDeliveryProvider();
+    const canSend = (await provider.isConfigured()) || (typeof deliveryProvider.sendMessage === 'function' && await deliveryProvider.isConfigured());
     res.render('inbox/compose', {
       title: 'Compose',
       active: 'inbox',
@@ -526,7 +530,7 @@ router.get('/compose', requireAuth, requireCapability('send'), async (req, res, 
       inReplyTo,
       references,
       error: null,
-      configured: await provider.isConfigured(),
+      configured: canSend,
       templates: opts.templates,
     });
   } catch (err) {
@@ -548,6 +552,14 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
   try {
     const provider = await getMailboxProvider();
     const configured = await provider.isConfigured();
+
+    // Sender.net can also be used for transactional (compose) sends when
+    // the IMAP/SMTP mailbox is not configured or its outgoing SMTP has no host.
+    const deliveryProvider = await getDeliveryProvider();
+    const senderConfigured = typeof deliveryProvider.sendMessage === 'function' && (await deliveryProvider.isConfigured());
+    // canSend is true when at least one outbound channel is ready.
+    const canSend = configured || senderConfigured;
+
     const opts = await composeOptions();
 
     const rerender = (errorMsg) => {
@@ -561,7 +573,7 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
         inReplyTo: inReplyTo || '',
         references: references || '',
         error: errorMsg,
-        configured,
+        configured: canSend,
         templates: opts.templates,
       });
     };
@@ -574,8 +586,8 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
     if (!subject) return rerender('Add a subject.');
     if (!body.trim() && !html) return rerender('Add a message.');
 
-    if (!configured) {
-      return rerender('Mailbox is not configured, so nothing was sent. Add IMAP/SMTP credentials in Settings → Integrations.');
+    if (!canSend) {
+      return rerender('No delivery channel is configured. Add IMAP/SMTP credentials or a Sender.net API token in Settings → Integrations.');
     }
 
     const ccList = h.splitAddresses(cc).filter(h.isValidEmail);
@@ -586,9 +598,23 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
       contentType: f.mimetype,
     }));
 
+    // Determine from name/email: prefer mailbox SMTP config, then delivery provider.
+    let fromName = 'OakView Construction';
+    let fromEmail = '';
+    if (configured && typeof provider.smtpConfig === 'function') {
+      const smtpCfg = await provider.smtpConfig();
+      fromName = smtpCfg.fromName || fromName;
+      fromEmail = smtpCfg.fromEmail || smtpCfg.user || fromEmail;
+    }
+    if (!fromEmail) {
+      // Fall back to delivery provider identity (Sender.net from_email setting).
+      const settings = require('../../config/settings');
+      fromEmail = (await settings.get('mailbox.from_email')) || (await settings.get('delivery.smtp.from')) || '';
+      fromName = (await settings.get('mailbox.from_name')) || fromName;
+    }
+
     // Personalise tokens using the first recipient's contact record when known.
-    const sender = typeof provider.smtpConfig === 'function' ? await provider.smtpConfig() : {};
-    const unsubscribeUrl = `mailto:${sender.fromEmail || sender.user || validTo[0]}?subject=Unsubscribe`;
+    const unsubscribeUrl = `mailto:${fromEmail || validTo[0]}?subject=Unsubscribe`;
     let data = { email: validTo[0], first_name: '', last_name: '', company: '', unsubscribe_url: unsubscribeUrl };
     const known = await db.one(
       'SELECT first_name, last_name, company FROM subscribers WHERE email = ? LIMIT 1',
@@ -607,33 +633,55 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
     const htmlFinal = html ? h.mergeRecipientEmailInLinks(h.personalise(html, data), data.email) : undefined;
 
     let result;
-    try {
-      result = await provider.send({
-        to: validTo.join(', '),
-        cc: ccList.length ? ccList.join(', ') : undefined,
-        bcc: bccList.length ? bccList.join(', ') : undefined,
-        subject,
-        text: textFinal,
-        html: htmlFinal,
-        inReplyTo,
-        references,
-        attachments,
-      });
-    } catch (err) {
-      return rerender(`Send failed: ${err.message}`);
+    if (configured) {
+      // Primary path: send via IMAP/SMTP mailbox provider.
+      try {
+        result = await provider.send({
+          to: validTo.join(', '),
+          cc: ccList.length ? ccList.join(', ') : undefined,
+          bcc: bccList.length ? bccList.join(', ') : undefined,
+          subject,
+          text: textFinal,
+          html: htmlFinal,
+          inReplyTo,
+          references,
+          attachments,
+        });
+      } catch (err) {
+        return rerender(`Send failed: ${err.message}`);
+      }
+    } else {
+      // Fallback path: send via Sender.net transactional API.
+      // Attachments are not supported by Sender.net /message/send; warn if any were attached.
+      if (files.length) {
+        // Non-fatal warning — send without attachments.
+        req.flash('warn', 'Attachments are not supported when sending via Sender.net. The message was sent without them.');
+      }
+      try {
+        result = await deliveryProvider.sendMessage({
+          to: validTo,          // array — provider.sendMessage iterates recipients
+          subject,
+          html: htmlFinal || undefined,
+          text: textFinal,
+          fromName,
+          fromEmail,
+          replyTo: fromEmail,
+        });
+      } catch (err) {
+        return rerender(`Send failed (Sender.net): ${err.message}`);
+      }
     }
 
     // Find the Sent folder path (from provider if connected, or fallback)
     let sentFolderPath = 'Sent';
-    try {
-      const folders = defaultFolders(await provider.listFolders().catch(() => []));
-      const sentF = folders.find((f) => f.key === 'sent');
-      if (sentF) sentFolderPath = sentF.path;
-    } catch (_) {}
+    if (configured) {
+      try {
+        const folders = defaultFolders(await provider.listFolders().catch(() => []));
+        const sentF = folders.find((f) => f.key === 'sent');
+        if (sentF) sentFolderPath = sentF.path;
+      } catch (_) {}
+    }
 
-    const fromCfg = typeof provider.smtpConfig === 'function' ? await provider.smtpConfig() : {};
-    const fromName = fromCfg.fromName || 'OakView Construction';
-    const fromEmail = fromCfg.fromEmail || fromCfg.user || '';
     const toObjects = validTo.map((e) => ({ name: '', email: e }));
     const ccObjects = ccList.map((e) => ({ name: '', email: e }));
     const bccObjects = bccList.map((e) => ({ name: '', email: e }));
@@ -662,19 +710,21 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
       console.warn('Could not cache sent message in local db:', dbErr.message);
     }
 
-    // Best-effort: keep a copy on the server in the Sent folder
-    try {
-      const raw = provider.buildRaw({
-        to: validTo.join(', '),
-        cc: ccList.length ? ccList.join(', ') : undefined,
-        subject,
-        text: textFinal,
-        html: htmlFinal,
-        fromName,
-        fromEmail,
-      });
-      await provider.append(sentFolderPath, raw, ['\\Seen']);
-    } catch (_) { /* non-fatal — the message was already sent and cached */ }
+    // Best-effort: keep a copy on the server in the IMAP Sent folder (not applicable for Sender.net).
+    if (configured && typeof provider.buildRaw === 'function' && typeof provider.append === 'function') {
+      try {
+        const raw = provider.buildRaw({
+          to: validTo.join(', '),
+          cc: ccList.length ? ccList.join(', ') : undefined,
+          subject,
+          text: textFinal,
+          html: htmlFinal,
+          fromName,
+          fromEmail,
+        });
+        await provider.append(sentFolderPath, raw, ['\\Seen']);
+      } catch (_) { /* non-fatal — the message was already sent and cached */ }
+    }
 
     const sentMessage = `Message sent${result && result.messageId ? ` (${result.messageId})` : ''}.`;
     req.flash('success', sentMessage);
