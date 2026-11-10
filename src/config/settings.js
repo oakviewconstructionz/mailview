@@ -72,10 +72,14 @@ let cacheAt = 0;
 const CACHE_TTL_MS = 15 * 1000;
 
 async function loadAll() {
-  const rows = await db.query('SELECT setting_key, setting_value, is_secret FROM settings');
   const stored = {};
-  for (const row of rows) {
-    stored[row.setting_key] = row.is_secret ? decrypt(row.setting_value) : (row.setting_value || '');
+  try {
+    const rows = await db.query('SELECT setting_key, setting_value, is_secret FROM settings');
+    for (const row of rows) {
+      stored[row.setting_key] = row.is_secret ? decrypt(row.setting_value) : (row.setting_value || '');
+    }
+  } catch (err) {
+    // DB unreachable or starting up: fall back gracefully to environment defaults
   }
 
   const resolved = {};

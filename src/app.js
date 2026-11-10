@@ -120,6 +120,10 @@ function createApp() {
     req.url = '/compose';
     return require('./modules/inbox/routes')(req, res, next);
   });
+  app.post('/send', (req, res, next) => {
+    req.url = '/compose';
+    return require('./modules/inbox/routes')(req, res, next);
+  });
   app.use('/inbox', require('./modules/inbox/routes'));
   app.use('/contacts', require('./modules/subscribers/routes'));
   app.use('/lists', require('./modules/subscribers/listRoutes'));

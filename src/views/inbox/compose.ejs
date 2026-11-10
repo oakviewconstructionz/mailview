@@ -138,21 +138,21 @@
           return r.json().then(function (d) {
             if (d && d.ok) {
               showNotice('success', d.message || 'Message sent.');
-              window.setTimeout(function () { window.location = (d.redirect || '/inbox'); }, 1100);
+              window.setTimeout(function () { window.location = (d.redirect || '/inbox?folder=Sent'); }, 1100);
               return;
             }
             showNotice('error', (d && d.error) || 'Send failed.');
             if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
           });
         }
-        if (r.ok) { window.location = '/inbox'; return null; }
+        if (r.ok) { window.location = '/inbox?folder=Sent'; return null; }
         return r.text().then(function (html) {
           if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var fresh = doc.getElementById('composePanel');
           var cur = document.getElementById('composePanel');
           if (fresh && cur) { cur.innerHTML = fresh.innerHTML; bindShell(); }
-          else { window.location.reload(); }
+          else { showNotice('error', 'Send failed (HTTP ' + r.status + '). Please check your input.'); }
         });
       }).catch(function (err) {
         showNotice('error', (err && err.message) || 'Send timed out or network error. Check SMTP settings.');

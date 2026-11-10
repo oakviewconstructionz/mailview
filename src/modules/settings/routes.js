@@ -176,27 +176,27 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
 
 /* -------------------------------------------------------- connection test */
 
+router.get('/test/:kind', requireAuth, (req, res) => res.redirect('/settings'));
+
 router.post('/test/:kind', requireAuth, requireRole('admin'), async (req, res, next) => {
   const kind = req.params.kind;
   try {
     let result;
-    // Wrap the whole test in a 25-second guard so the route always responds
-    // even when the IMAP/SMTP server is totally unreachable (Railway would
-    // otherwise show its own "Application failed to respond" crash page).
+    // Strict 6-second timeout so this NEVER hangs and Railway never displays "Application failed to respond"
     const withTimeout = (p, ms) =>
       Promise.race([
         p,
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Connection test timed out after ${ms / 1000}s — the server may be unreachable.`)), ms)
+          setTimeout(() => reject(new Error(`Connection test timed out after ${ms / 1000}s.`)), ms)
         ),
       ]);
 
     if (kind === 'delivery') {
       const provider = await getDeliveryProvider();
-      result = await withTimeout(provider.verify(), 25000);
+      result = await withTimeout(provider.verify(), 6000);
     } else if (kind === 'mailbox') {
       const provider = await getMailboxProvider();
-      result = await withTimeout(provider.verify(), 25000);
+      result = await withTimeout(provider.verify(), 6000);
     } else {
       req.flash('error', 'Unknown connection type.');
       return res.redirect('/settings');
@@ -210,7 +210,7 @@ router.post('/test/:kind', requireAuth, requireRole('admin'), async (req, res, n
     }
     return res.redirect('/settings');
   } catch (err) {
-    req.flash('error', err.message || 'Connection failed.');
+    req.flash('error', err.message || 'Connection test failed.');
     return res.redirect('/settings');
   }
 });

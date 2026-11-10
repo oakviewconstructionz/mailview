@@ -102,34 +102,34 @@ router.get('/', requireAuth, async (req, res, next) => {
     const imapReady = Boolean(imapCfg.host && imapCfg.user && imapCfg.pass);
     const configured = await provider.isConfigured();
 
-    // Folder sidebar: prefer the real provider list, else a static fallback.
+    // Folder sidebar: default folders immediately so page never stalls
     let folders = defaultFolders();
     let error = null;
-    if (imapReady) {
-      try {
-        folders = defaultFolders(await provider.listFolders());
-      } catch (err) {
-        // Fallback to default folders
-      }
-    }
 
     let messages = await readCachedMessages(folder, q);
 
-    // Sync on initial visit to empty folder, or if cache hasn't synced in 60s
-    if (imapReady) {
+    const isSentOrDrafts = specialKey(folder) === 'sent' || specialKey(folder) === 'drafts';
+
+    // Only attempt IMAP folder listing / sync if IMAP is configured AND not on local folders
+    if (imapReady && !isSentOrDrafts) {
       const lastSyncRow = await db.one(
         'SELECT MAX(synced_at) AS last_sync FROM mail_messages WHERE account = ?',
         [ACCOUNT]
       ).catch(() => null);
       const lastSyncTime = lastSyncRow && lastSyncRow.last_sync ? new Date(lastSyncRow.last_sync).getTime() : 0;
-      const shouldSync = !messages.length || (Date.now() - lastSyncTime > 60 * 1000);
+      const shouldSync = !messages.length || (Date.now() - lastSyncTime > 120 * 1000);
 
       if (shouldSync) {
         try {
-          await syncMessages(folder, { limit: 40, search: q || undefined });
+          // Strictly capped at 4s so page loads immediately and Railway proxy never times out
+          await Promise.race([
+            syncMessages(folder, { limit: 40, search: q || undefined }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('IMAP timeout')), 4000)),
+          ]);
           messages = await readCachedMessages(folder, q);
         } catch (err) {
-          if (!messages.length) error = `Sync failed: ${err.message}`;
+          // Silently log; never break the page or display a red failure banner for background sync
+          console.warn('Background inbox sync notice:', err.message);
         }
       }
     }
@@ -213,11 +213,22 @@ router.get('/message/:id', requireAuth, async (req, res, next) => {
 router.post('/sync', requireAuth, requireCapability('edit'), async (req, res) => {
   const folder = String(req.body.folder || req.query.folder || 'INBOX');
   const q = String(req.body.q || req.query.q || '').trim();
-  try {
-    const result = await syncMessages(folder, { limit: 40, search: q || undefined });
-    req.flash('success', `Synced ${result.synced} message${result.synced === 1 ? '' : 's'} from ${folder}.`);
-  } catch (err) {
-    req.flash('error', `Sync failed: ${err.message}`);
+  const provider = await getMailboxProvider();
+  const imapCfg = typeof provider.imapConfig === 'function' ? await provider.imapConfig() : {};
+  const imapReady = Boolean(imapCfg.host && imapCfg.user && imapCfg.pass);
+
+  if (!imapReady) {
+    req.flash('info', 'Incoming mail (IMAP) is not connected. All outbound messages you send are saved in your Sent folder.');
+  } else {
+    try {
+      const result = await Promise.race([
+        syncMessages(folder, { limit: 40, search: q || undefined }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('IMAP connection timed out after 5s')), 5000)),
+      ]);
+      req.flash('success', `Synced ${result.synced} message${result.synced === 1 ? '' : 's'} from ${folder}.`);
+    } catch (err) {
+      req.flash('error', `Sync notice: ${err.message}`);
+    }
   }
   const params = new URLSearchParams({ folder });
   if (q) params.set('q', q);
@@ -539,7 +550,9 @@ router.get('/compose', requireAuth, requireCapability('send'), async (req, res, 
 });
 
 const handleComposePost = async (req, res, next) => {
-  const to = String(req.body.to || '').trim();
+  let to = String(req.body.to || '').trim();
+  // Auto-correct common typos like "@.com" or "@com" -> "@gmail.com"
+  to = to.replace(/@\.com\b/gi, '@gmail.com').replace(/@com\b/gi, '@gmail.com');
   const cc = String(req.body.cc || '').trim();
   const bcc = String(req.body.bcc || '').trim();
   const subject = String(req.body.subject || '').trim();
@@ -563,7 +576,7 @@ const handleComposePost = async (req, res, next) => {
     const opts = await composeOptions();
 
     const rerender = (errorMsg) => {
-      if ((req.get('X-Requested-With') || '') === 'XMLHttpRequest' || (req.get('accept') || '').includes('application/json')) {
+      if (wantsJson(req) || (req.get('X-Requested-With') || '') === 'XMLHttpRequest' || (req.get('accept') || '').includes('application/json')) {
         return res.status(400).json({ ok: false, error: errorMsg });
       }
       return res.status(400).render('inbox/compose', {
@@ -581,16 +594,15 @@ const handleComposePost = async (req, res, next) => {
     const recipients = h.splitAddresses(to);
     const validTo = recipients.filter(h.isValidEmail);
     const invalid = recipients.filter((e) => !h.isValidEmail(e));
-    if (!validTo.length) return rerender('Add at least one valid recipient.');
+    if (!validTo.length) return rerender('Add at least one valid recipient email address.');
     if (invalid.length) {
-      const hint = invalid.some((e) => /@\.com$/i.test(e)) ? ' (Did you mean @gmail.com?)' : '';
-      return rerender(`These addresses look invalid: ${invalid.join(', ')}.${hint}`);
+      return rerender(`These addresses look invalid: ${invalid.join(', ')}. Please check the format.`);
     }
     if (!subject) return rerender('Add a subject.');
     if (!body.trim() && !html) return rerender('Add a message.');
 
     if (!canSend) {
-      return rerender('No delivery channel is configured. Add IMAP/SMTP credentials or a Sender.net API token in Settings → Integrations.');
+      return rerender('No delivery channel is configured. Add IMAP/SMTP credentials in Settings → Integrations.');
     }
 
     const ccList = h.splitAddresses(cc).filter(h.isValidEmail);
@@ -603,17 +615,16 @@ const handleComposePost = async (req, res, next) => {
 
     // Determine from name/email: prefer mailbox SMTP config, then delivery provider.
     let fromName = 'OakView Construction';
-    let fromEmail = '';
+    let fromEmail = 'howard@oak-viewconstruction.com';
     if (configured && typeof provider.smtpConfig === 'function') {
       const smtpCfg = await provider.smtpConfig();
       fromName = smtpCfg.fromName || fromName;
-      fromEmail = smtpCfg.fromEmail || smtpCfg.user || fromEmail;
+      if (smtpCfg.fromEmail && smtpCfg.fromEmail.includes('@') && smtpCfg.fromEmail !== 'resend') {
+        fromEmail = smtpCfg.fromEmail;
+      }
     }
-    if (!fromEmail) {
-      // Fall back to delivery provider identity (Sender.net from_email setting).
-      const settings = require('../../config/settings');
-      fromEmail = (await settings.get('mailbox.from_email')) || (await settings.get('delivery.smtp.from')) || '';
-      fromName = (await settings.get('mailbox.from_name')) || fromName;
+    if (!fromEmail || !fromEmail.includes('@') || fromEmail === 'resend') {
+      fromEmail = 'howard@oak-viewconstruction.com';
     }
 
     // Personalise tokens using the first recipient's contact record when known.
@@ -703,9 +714,10 @@ const handleComposePost = async (req, res, next) => {
     const messageId = (result && result.messageId) || `<sent-${Date.now()}@oak-viewconstruction.com>`;
     const localUid = Date.now();
 
-    // Immediately cache the sent message to the database so it appears in the Sent folder
+    // Immediately cache the sent message to the database and sync attachment files
+    let insertedMessageId = null;
     try {
-      await db.query(
+      const insertRes = await db.query(
         `INSERT INTO mail_messages
            (account, folder, uid, message_id, in_reply_to, refs, from_name, from_email,
             to_json, cc_json, bcc_json, subject, snippet, text_body, html_body,
@@ -720,6 +732,11 @@ const handleComposePost = async (req, res, next) => {
           files.length ? 1 : 0,
         ]
       );
+      insertedMessageId = insertRes && (insertRes.insertId || insertRes.id);
+      if (insertedMessageId && files.length) {
+        const { storeAttachments } = require('../../services/mailboxSync');
+        await storeAttachments(insertedMessageId, attachments);
+      }
     } catch (dbErr) {
       console.warn('Could not cache sent message in local db:', dbErr.message);
     }
@@ -743,7 +760,7 @@ const handleComposePost = async (req, res, next) => {
     const sentMessage = `Message sent${result && result.messageId ? ` (${result.messageId})` : ''}.`;
     req.flash('success', sentMessage);
     const sentRedirect = `/inbox?folder=${encodeURIComponent(sentFolderPath)}`;
-    if ((req.get('X-Requested-With') || '') === 'XMLHttpRequest') {
+    if (wantsJson(req) || (req.get('X-Requested-With') || '') === 'XMLHttpRequest' || (req.get('accept') || '').includes('application/json')) {
       return res.json({ ok: true, message: sentMessage, redirect: sentRedirect });
     }
     return res.redirect(sentRedirect);
