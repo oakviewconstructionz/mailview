@@ -25,7 +25,14 @@ const LABELS = {
 
 async function activeName() {
   const name = (await settings.get('delivery.provider')) || 'sender';
-  return PROVIDERS[name] ? name : 'sender';
+  const selected = PROVIDERS[name] ? name : 'sender';
+  // Keep the explicitly-selected provider when it is actually configured.
+  if (await PROVIDERS[selected].isConfigured()) return selected;
+  // Otherwise fall back to the other provider if that one is configured, so a
+  // ready integration is used instead of an unconfigured default.
+  const other = selected === 'smtp' ? 'sender' : 'smtp';
+  if (await PROVIDERS[other].isConfigured()) return other;
+  return selected;
 }
 
 async function getDeliveryProvider(nameOverride) {

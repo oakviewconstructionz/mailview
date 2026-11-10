@@ -19,6 +19,7 @@
 <% } %>
 
 <div id="composePanel" style="max-width:760px;">
+  <div id="composeNotice" class="flash" style="display:none;margin-bottom:14px;"></div>
   <% if (error) { %>
     <div class="flash flash-error" style="margin-bottom:14px;"><%= error %></div>
   <% } %>
@@ -97,6 +98,15 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  function showNotice(type, text) {
+    var el = document.getElementById('composeNotice');
+    if (!el) return;
+    el.className = 'flash flash-' + (type === 'error' ? 'error' : 'success');
+    el.textContent = text;
+    el.style.display = '';
+    if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }
+
   function bindForm() {
     var form = document.getElementById('composeForm');
     if (!form || form.dataset.bound === '1') return;
@@ -107,17 +117,35 @@
       var tokenInput = form.querySelector('input[name="_csrf"]');
       var res = tokenInput ? tokenInput.value : '';
       e.preventDefault();
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
       // A multipart body is not parsed by the app's CSRF middleware, so the token
-      // is sent as a header. redirect:'manual' keeps the success flash intact for
-      // the navigation that follows (so the "Message sent" notice is shown).
+      // is sent as a header. The server answers this request with JSON so the
+      // "Message sent" confirmation is shown here directly — it does not depend on
+      // a session flash surviving an opaque redirect.
       fetch(form.getAttribute('action'), {
         method: 'POST',
         body: new FormData(form),
-        headers: { 'X-CSRF-Token': res, 'Accept': 'text/html' },
-        credentials: 'same-origin',
-        redirect: 'manual'
+        headers: {
+          'X-CSRF-Token': res,
+          'Accept': 'application/json, text/html',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
       }).then(function (r) {
-        if (r.type === 'opaqueredirect' || r.status === 0 || r.ok) { window.location = '/inbox'; return null; }
+        var ct = r.headers.get('content-type') || '';
+        if (ct.indexOf('application/json') !== -1) {
+          return r.json().then(function (d) {
+            if (d && d.ok) {
+              showNotice('success', d.message || 'Message sent.');
+              window.setTimeout(function () { window.location = (d.redirect || '/inbox'); }, 1100);
+              return;
+            }
+            showNotice('error', (d && d.error) || 'Send failed.');
+            if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
+          });
+        }
+        if (r.ok) { window.location = '/inbox'; return null; }
         return r.text().then(function (html) {
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var fresh = doc.getElementById('composePanel');

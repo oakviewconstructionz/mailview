@@ -567,7 +567,11 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
       }
     } catch (_) { /* non-fatal — the message was still sent */ }
 
-    req.flash('success', `Message sent${result && result.messageId ? ` (${result.messageId})` : ''}.`);
+    const sentMessage = `Message sent${result && result.messageId ? ` (${result.messageId})` : ''}.`;
+    req.flash('success', sentMessage);
+    if ((req.get('X-Requested-With') || '') === 'XMLHttpRequest') {
+      return res.json({ ok: true, message: sentMessage, redirect: '/inbox' });
+    }
     return res.redirect('/inbox');
   } catch (err) {
     return next(err);

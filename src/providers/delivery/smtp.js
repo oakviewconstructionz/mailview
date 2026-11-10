@@ -19,13 +19,28 @@ class SmtpDeliveryProvider extends BaseDeliveryProvider {
   }
 
   async config() {
+    const host = await settings.get('delivery.smtp.host');
+    if (host) {
+      return {
+        host,
+        port: await settings.getInt('delivery.smtp.port', 587),
+        user: await settings.get('delivery.smtp.user'),
+        pass: await settings.get('delivery.smtp.pass'),
+        secure: await settings.getBool('delivery.smtp.secure'),
+        from: await settings.get('delivery.smtp.from'),
+        inherited: false,
+      };
+    }
+    // No dedicated relay configured — reuse the mailbox's outgoing SMTP (e.g.
+    // Gmail) so campaigns can send through the same account as the Inbox.
     return {
-      host: await settings.get('delivery.smtp.host'),
-      port: await settings.getInt('delivery.smtp.port', 587),
-      user: await settings.get('delivery.smtp.user'),
-      pass: await settings.get('delivery.smtp.pass'),
-      secure: await settings.getBool('delivery.smtp.secure'),
-      from: await settings.get('delivery.smtp.from'),
+      host: await settings.get('mailbox.smtp.host'),
+      port: await settings.getInt('mailbox.smtp.port', 465),
+      user: await settings.get('mailbox.smtp.user'),
+      pass: await settings.get('mailbox.smtp.password'),
+      secure: await settings.getBool('mailbox.smtp.secure'),
+      from: (await settings.get('mailbox.from_email')) || (await settings.get('mailbox.smtp.user')),
+      inherited: true,
     };
   }
 
