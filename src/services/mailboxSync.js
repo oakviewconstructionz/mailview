@@ -165,6 +165,7 @@ async function upsertMessage(folder, envelope, full) {
   const isRead = full ? (full.seen ? 1 : 0) : (envelope.seen ? 1 : 0);
   const isStarred = full ? (full.flagged ? 1 : 0) : (envelope.flagged ? 1 : 0);
   const isDraft = envelope.draft ? 1 : 0;
+  const isSent = specialKey(folder) === 'sent' ? 1 : 0;
   const hasAttachments = full
     ? (full.attachments && full.attachments.length ? 1 : 0)
     : (existing ? existing.has_attachments : (envelope.hasAttachments ? 1 : 0));
@@ -196,6 +197,7 @@ async function upsertMessage(folder, envelope, full) {
        is_read = VALUES(is_read),
        is_starred = VALUES(is_starred),
        is_draft = VALUES(is_draft),
+       is_sent = VALUES(is_sent),
        size_bytes = VALUES(size_bytes),
        sent_at = VALUES(sent_at),
        received_at = VALUES(received_at),
@@ -205,7 +207,7 @@ async function upsertMessage(folder, envelope, full) {
       from.name || null, from.email || null,
       JSON.stringify(toList || []), JSON.stringify(ccList || []), JSON.stringify(bccList || []),
       subject, snippetText, textBody, htmlBody,
-      hasAttachments, isRead, isStarred, isDraft, 0, size,
+      hasAttachments, isRead, isStarred, isDraft, isSent, size,
       date, date,
     ]
   );

@@ -562,7 +562,10 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
       return rerender(`Send failed: ${err.message}`);
     }
 
-    // Best-effort: keep a copy in the Sent folder. Never blocks the success.
+    // Best-effort: keep a copy in the Sent folder and show it immediately. The
+    // Sent folder is only re-synced when its cache is empty, so without caching
+    // the appended copy here a freshly sent message stays invisible until a
+    // manual Sync.
     try {
       const folders = defaultFolders(await provider.listFolders());
       const sent = folders.find((f) => f.key === 'sent');
@@ -577,7 +580,13 @@ router.post('/compose', requireAuth, requireCapability('send'), upload.array('at
           fromName: from.fromName,
           fromEmail: from.fromEmail || from.user,
         });
-        await provider.append(sent.path, raw, ['\\Seen']);
+        const appended = await provider.append(sent.path, raw, ['\\Seen']);
+        const uid = appended && appended.uid ? appended.uid : null;
+        if (uid) {
+          try {
+            await syncMessage(sent.path, uid);
+          } catch (_) { /* the copy is on the server; it appears on the next sync */ }
+        }
       }
     } catch (_) { /* non-fatal — the message was still sent */ }
 
