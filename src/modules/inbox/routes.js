@@ -6,6 +6,7 @@ const express = require('express');
 const multer = require('multer');
 
 const db = require('../../config/db');
+const settings = require('../../config/settings');
 const h = require('../../lib/helpers');
 const { requireAuth, requireCapability } = require('../../middleware/auth');
 const { getMailboxProvider } = require('../../providers/mailbox');
