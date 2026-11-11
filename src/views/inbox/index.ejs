@@ -61,7 +61,7 @@
   <!-- Reading pane -->
   <section class="inbox-read">
     <% if (selected) { %>
-      <%- include('partials/reading-pane', { selected: selected, attachments: attachments, folder: folder, folders: folders, configured: configured }) %>
+      <%- include('partials/reading-pane', { selected: selected, attachments: attachments, folder: folder, folders: folders, configured: configured, csrfToken: (typeof csrfToken !== 'undefined' ? csrfToken : '') }) %>
     <% } else { %>
       <%- include('../partials/empty', {
         heading: messages.length ? 'Select a message' : 'Nothing here yet',

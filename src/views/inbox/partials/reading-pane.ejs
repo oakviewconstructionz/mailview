@@ -1,5 +1,7 @@
 <%
   var moveFolders = (typeof folders !== 'undefined' && folders && folders.length) ? folders : null;
+  var token = (typeof csrfToken !== 'undefined' && csrfToken) ? csrfToken : ((typeof locals !== 'undefined' && locals.csrfToken) ? locals.csrfToken : '');
+  var isConfigured = (typeof configured !== 'undefined') ? configured : false;
   var toLabel = 'you';
   try {
     var toArr = typeof selected.to_json === 'string' ? JSON.parse(selected.to_json || '[]') : (selected.to_json || []);
@@ -29,20 +31,20 @@
   <a class="btn btn-sm" href="/inbox/compose?forwardId=<%= selected.id %>">Forward</a>
 
   <form method="post" action="/inbox/<%= selected.id %>/read">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="_csrf" value="<%= token %>">
     <input type="hidden" name="seen" value="<%= selected.is_read ? '0' : '1' %>">
     <button class="btn btn-sm" type="submit"><%= selected.is_read ? 'Mark unread' : 'Mark read' %></button>
   </form>
 
   <form method="post" action="/inbox/<%= selected.id %>/flag">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="_csrf" value="<%= token %>">
     <input type="hidden" name="starred" value="<%= selected.is_starred ? '0' : '1' %>">
     <button class="btn btn-sm" type="submit"><%= selected.is_starred ? 'Unstar' : 'Star' %></button>
   </form>
 
   <% if (moveFolders) { %>
     <form method="post" action="/inbox/<%= selected.id %>/move" class="row" style="gap:6px;">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="_csrf" value="<%= token %>">
       <select class="select" name="folder" style="width:auto;padding:5px 8px;font-size:12px;">
         <% moveFolders.forEach(function (f) { %>
           <% if (f.path !== (selected.folder || folder)) { %>
@@ -54,9 +56,9 @@
     </form>
   <% } %>
 
-  <% if (configured) { %>
+  <% if (isConfigured) { %>
     <form method="post" action="/inbox/<%= selected.id %>/delete" data-confirm="Delete this message from the mailbox?">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="_csrf" value="<%= token %>">
       <button class="btn btn-sm btn-danger" type="submit">Delete</button>
     </form>
   <% } %>
@@ -80,7 +82,7 @@
         This email was received via Resend webhook. To load the full message content, click below or verify your Resend API Key has <strong>Full access</strong> in Settings → Integrations.
       </p>
       <form method="post" action="/inbox/<%= selected.id %>/fetch-body">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="_csrf" value="<%= token %>">
         <button class="btn btn-sm btn-primary" type="submit">Fetch body now</button>
       </form>
     </div>
