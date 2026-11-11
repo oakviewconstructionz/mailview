@@ -22,31 +22,11 @@
     <div class="flash flash-error" style="margin-bottom:14px;"><%= error %></div>
   <% } %>
 
-  <% if (templates && templates.length) { %>
-  <div class="card mb-3">
-    <div class="card-head"><h2>Start from a template</h2></div>
-    <div class="card-body">
-      <div class="row" style="gap:10px; align-items:flex-end;">
-        <div class="field" style="flex:1; margin:0;">
-          <label for="templatePicker">Template</label>
-          <select class="select" id="templatePicker">
-            <option value="">— Choose a template (optional) —</option>
-            <% templates.forEach(function (t) { %>
-              <option value="<%= t.id %>" <%= String(draft.templateId) === String(t.id) ? 'selected' : '' %>><%= t.name %></option>
-            <% }); %>
-          </select>
-        </div>
-      </div>
-    </div>
-  </div>
-  <% } %>
-
   <form id="composeForm" method="post" action="/inbox/compose?_csrf=<%= csrfToken %>" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <input type="hidden" name="inReplyTo" value="<%= inReplyTo || '' %>">
     <input type="hidden" name="references" value="<%= references || '' %>">
     <input type="hidden" name="html" id="htmlBody" value="<%= draft.html || '' %>">
-    <input type="hidden" name="templateId" id="templateId" value="<%= draft.templateId || '' %>">
 
     <div class="field">
       <label for="to">To <span class="muted">(recipient email, or leave blank to send to Bcc only)</span></label>
@@ -70,8 +50,30 @@
     </div>
 
     <div class="field">
-      <label for="body">Message</label>
+      <div class="row between" style="align-items:center;margin-bottom:6px;">
+        <label for="body" style="margin:0;font-weight:600;">Message</label>
+        <div class="row" style="gap:8px;">
+          <button type="button" class="btn btn-sm" id="openLinkModalBtn" style="padding:4px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;background:#f0f9ff;border-color:#bae6fd;color:#0284c7;font-weight:600;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Embed Link to Text
+          </button>
+          <button type="button" class="btn btn-sm" id="togglePreviewBtn" style="padding:4px 10px;font-size:12px;color:#475569;">
+            Preview Email
+          </button>
+        </div>
+      </div>
+
       <textarea class="textarea" id="body" name="body" rows="12" style="width:100%;font-family:inherit;line-height:1.6;" placeholder="Type your message here..." required><%= draft.body %></textarea>
+
+      <!-- Live Preview Area -->
+      <div id="emailPreviewBox" style="display:none;margin-top:10px;padding:14px 16px;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:inset 0 1px 2px rgba(0,0,0,0.03);">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:8px;">Recipient View Preview:</div>
+        <div id="emailPreviewContent" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;"></div>
+      </div>
+
+      <div class="hint" style="margin-top:6px;font-size:12px;color:#64748b;">
+        💡 To embed a link into words, highlight the text and click <strong>Embed Link to Text</strong> (or press <strong>Ctrl+K</strong>). You can also type <code>[Words](https://example.com)</code>.
+      </div>
     </div>
 
     <div class="field">
@@ -87,10 +89,175 @@
   </form>
 </div>
 
+<!-- Modal Dialog for Embedding Link to Text -->
+<div id="linkModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(1px);">
+  <div style="background:#ffffff;border-radius:12px;padding:22px 24px;width:92%;max-width:440px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.2),0 10px 10px -5px rgba(0,0,0,0.08);animation:modalIn 0.15s ease-out;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <h3 style="margin:0;font-size:16px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Embed Link to Text
+      </h3>
+      <button type="button" id="closeLinkModalX" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;line-height:1;padding:2px 6px;">&times;</button>
+    </div>
+
+    <div class="field" style="margin-bottom:12px;">
+      <label for="linkText" style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;color:#334155;">Text to display</label>
+      <input type="text" id="linkText" class="input" placeholder="e.g. View Quote, Click here, Website" style="width:100%;">
+    </div>
+
+    <div class="field" style="margin-bottom:20px;">
+      <label for="linkUrl" style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;color:#334155;">Link Web Address (URL)</label>
+      <input type="text" id="linkUrl" class="input" placeholder="https://example.com/quote" style="width:100%;">
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button type="button" class="btn btn-sm" id="cancelLinkBtn">Cancel</button>
+      <button type="button" class="btn btn-sm btn-primary" id="applyLinkBtn" style="padding:7px 18px;font-weight:600;">Insert Link</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   var form = document.getElementById('composeForm');
-  if (!form) return;
+  var bodyInput = document.getElementById('body');
+  var htmlInput = document.getElementById('htmlBody');
+  var openLinkBtn = document.getElementById('openLinkModalBtn');
+  var linkModal = document.getElementById('linkModal');
+  var linkText = document.getElementById('linkText');
+  var linkUrl = document.getElementById('linkUrl');
+  var applyLinkBtn = document.getElementById('applyLinkBtn');
+  var cancelLinkBtn = document.getElementById('cancelLinkBtn');
+  var closeLinkModalX = document.getElementById('closeLinkModalX');
+  var togglePreviewBtn = document.getElementById('togglePreviewBtn');
+  var emailPreviewBox = document.getElementById('emailPreviewBox');
+  var emailPreviewContent = document.getElementById('emailPreviewContent');
+
+  if (!form || !bodyInput) return;
+
+  var savedStart = 0;
+  var savedEnd = 0;
+
+  function openLinkModal() {
+    savedStart = bodyInput.selectionStart || 0;
+    savedEnd = bodyInput.selectionEnd || 0;
+    var selected = bodyInput.value.substring(savedStart, savedEnd).trim();
+    linkText.value = selected || '';
+    linkUrl.value = '';
+    linkModal.style.display = 'flex';
+    if (selected) {
+      linkUrl.focus();
+    } else {
+      linkText.focus();
+    }
+  }
+
+  function closeLinkModal() {
+    linkModal.style.display = 'none';
+    bodyInput.focus();
+  }
+
+  if (openLinkBtn) openLinkBtn.addEventListener('click', openLinkModal);
+  if (cancelLinkBtn) cancelLinkBtn.addEventListener('click', closeLinkModal);
+  if (closeLinkModalX) closeLinkModalX.addEventListener('click', closeLinkModal);
+
+  // Close modal when clicking outside modal box
+  linkModal.addEventListener('click', function (e) {
+    if (e.target === linkModal) closeLinkModal();
+  });
+
+  // Ctrl+K shortcut in body textarea
+  bodyInput.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      openLinkModal();
+    }
+  });
+
+  // Handle Enter key inside modal URL input
+  linkUrl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyLink();
+    }
+  });
+
+  function applyLink() {
+    var text = (linkText.value || '').trim();
+    var url = (linkUrl.value || '').trim();
+    if (!url) {
+      alert('Please enter a web address / link URL.');
+      linkUrl.focus();
+      return;
+    }
+    // Auto-prepend https:// if missing protocol
+    if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) {
+      url = 'https://' + url;
+    }
+    if (!text) {
+      text = url;
+    }
+
+    var replacement = '[' + text + '](' + url + ')';
+    var fullVal = bodyInput.value;
+    var before = fullVal.substring(0, savedStart);
+    var after = fullVal.substring(savedEnd);
+    bodyInput.value = before + replacement + after;
+    
+    // Position cursor right after inserted link
+    var newCursor = before.length + replacement.length;
+    bodyInput.setSelectionRange(newCursor, newCursor);
+
+    closeLinkModal();
+    updatePreviewIfOpen();
+  }
+
+  if (applyLinkBtn) applyLinkBtn.addEventListener('click', applyLink);
+
+  // Convert markdown/links to HTML for live preview and hidden html field
+  function renderEmailHtml(raw) {
+    if (!raw) return '';
+    var escaped = raw
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Convert [Text](url) to styled link
+    escaped = escaped.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/gi, function (_, label, url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;font-weight:600;">' + label + '</a>';
+    });
+
+    // Convert raw URLs (not inside tag) to links
+    escaped = escaped.replace(/(^|[\s(])((?:https?:\/\/)[^\s<)]+)/gi, function (_, prefix, url) {
+      return prefix + '<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">' + url + '</a>';
+    });
+
+    // Handle line breaks
+    return escaped.replace(/\r?\n/g, '<br>');
+  }
+
+  function updatePreviewIfOpen() {
+    if (emailPreviewBox.style.display !== 'none') {
+      emailPreviewContent.innerHTML = renderEmailHtml(bodyInput.value) || '<em style="color:#94a3b8;">(Message is empty)</em>';
+    }
+  }
+
+  if (togglePreviewBtn) {
+    togglePreviewBtn.addEventListener('click', function () {
+      if (emailPreviewBox.style.display === 'none') {
+        emailPreviewBox.style.display = 'block';
+        togglePreviewBtn.textContent = 'Hide Preview';
+        updatePreviewIfOpen();
+      } else {
+        emailPreviewBox.style.display = 'none';
+        togglePreviewBtn.textContent = 'Preview Email';
+      }
+    });
+  }
+
+  bodyInput.addEventListener('input', function () {
+    updatePreviewIfOpen();
+  });
 
   form.addEventListener('submit', function (e) {
     ['to', 'cc', 'bcc'].forEach(function (id) {
@@ -107,33 +274,19 @@
       alert('Please add at least one recipient email address (in To, Cc, or Bcc).');
       return;
     }
+
+    // Auto-generate rich HTML with clickable embedded links
+    if (htmlInput && bodyInput.value) {
+      var innerHtml = renderEmailHtml(bodyInput.value);
+      htmlInput.value = '<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">' + innerHtml + '</body></html>';
+    }
+
     var btn = document.getElementById('sendBtn');
     if (btn) {
       btn.disabled = true;
       btn.textContent = 'Sending message…';
     }
   });
-
-  var picker = document.getElementById('templatePicker');
-  if (picker) {
-    picker.addEventListener('change', function () {
-      var id = picker.value;
-      if (!id) return;
-      picker.disabled = true;
-      fetch('/templates/' + encodeURIComponent(id) + '/data')
-        .then(function (r) { if (!r.ok) throw new Error('Could not load template'); return r.json(); })
-        .then(function (t) {
-          if (t.subject) document.getElementById('subject').value = t.subject;
-          if (t.html) document.getElementById('htmlBody').value = t.html;
-          if (t.text || t.html) {
-            document.getElementById('body').value = t.text || t.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-          }
-          document.getElementById('templateId').value = String(t.id);
-        })
-        .catch(function () {})
-        .finally(function () { picker.disabled = false; });
-    });
-  }
 })();
 </script>
 
