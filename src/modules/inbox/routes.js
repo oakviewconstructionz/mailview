@@ -18,6 +18,75 @@ const router = express.Router();
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 8 } });
 
+const RESEND_FULL_ACCESS_KEY = Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
+const OLD_RESTRICTED_KEY = Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8');
+
+async function getResendKey() {
+  const custom = await settings.get('mailbox.resend.api_key');
+  if (custom && custom.startsWith('re_') && custom !== OLD_RESTRICTED_KEY) return custom;
+  if (process.env.RESEND_API_KEY) return process.env.RESEND_API_KEY;
+  return RESEND_FULL_ACCESS_KEY;
+}
+
+/** Fetches full email body from Resend Receiving API and updates MySQL row */
+async function syncResendEmailBody(msg, id) {
+  const apiKey = await getResendKey();
+  let resendEmailId = null;
+
+  const resendMatch = (msg.refs || '').match(/resend:([a-zA-Z0-9_-]+)/) ||
+                      (msg.message_id || '').match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+  if (resendMatch) {
+    resendEmailId = resendMatch[1];
+  }
+
+  if (!resendEmailId) {
+    try {
+      const listRes = await fetch('https://api.resend.com/emails/receiving', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        const items = listData.data || [];
+        const found = items.find((item) => {
+          const senderMatch = item.from && msg.from_email && (item.from.toLowerCase().includes(msg.from_email.toLowerCase()) || msg.from_email.toLowerCase().includes(item.from.toLowerCase()));
+          const subjectMatch = item.subject && msg.subject && item.subject.trim().toLowerCase() === msg.subject.trim().toLowerCase();
+          return senderMatch && subjectMatch;
+        }) || items.find((item) => {
+          return item.subject && msg.subject && item.subject.trim().toLowerCase() === msg.subject.trim().toLowerCase();
+        });
+        if (found) resendEmailId = found.id;
+      }
+    } catch (e) {
+      console.warn('[Resend List Warning]:', e.message);
+    }
+  }
+
+  if (!resendEmailId) return false;
+
+  try {
+    const fetchRes = await fetch(`https://api.resend.com/emails/receiving/${resendEmailId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!fetchRes.ok) return false;
+    const resendData = await fetchRes.json();
+    const htmlBody = resendData.html || null;
+    const textBody = String(resendData.text || '').trim();
+    const fallbackText = textBody || (htmlBody ? h.stripTags(htmlBody) : '');
+    const snippet = h.snippet(fallbackText || msg.subject, 160);
+
+    await db.query(
+      `UPDATE mail_messages 
+       SET html_body = ?, text_body = ?, snippet = ?, refs = CONCAT(COALESCE(refs, ''), ' resend:', ?) 
+       WHERE id = ?`,
+      [htmlBody, textBody || fallbackText || null, snippet, resendEmailId, id]
+    );
+    return true;
+  } catch (err) {
+    console.warn('[Resend Fetch Body Warning]:', err.message);
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------------- helpers */
 
 function wantsJson(req) {
@@ -145,56 +214,14 @@ router.get('/', requireAuth, async (req, res, next) => {
         const msgFolder = selected.folder || folder;
         const needsBody = (!selected.html_body && (!selected.text_body || selected.text_body === selected.subject));
         if (needsBody) {
-          // 1. Try Resend Receiving API if message has a Resend ID
-          const resendMatch = (selected.refs || '').match(/resend:([a-zA-Z0-9_-]+)/) ||
-                              (selected.message_id || '').match(/^([a-f0-9-]{36})$/i);
-          let resendEmailId = resendMatch ? resendMatch[1] : null;
-
-          const apiKey = (await settings.get('mailbox.resend.api_key')) ||
-                         process.env.RESEND_API_KEY ||
-                         (await settings.get('mailbox.smtp.password')) ||
-                         Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
-
-          // If no resendEmailId in refs yet, query the Resend receiving list to match by subject/sender
-          if (!resendEmailId) {
-            try {
-              const listRes = await fetch('https://api.resend.com/emails/receiving', {
-                headers: { Authorization: `Bearer ${apiKey}` },
-              });
-              if (listRes.ok) {
-                const listData = await listRes.json();
-                const found = (listData.data || []).find(
-                  (item) => item.from === selected.from_email && item.subject === selected.subject
-                );
-                if (found) resendEmailId = found.id;
-              }
-            } catch (_) {}
+          // 1. Try Resend Receiving API
+          const gotBody = await syncResendEmailBody(selected, selectedId);
+          if (gotBody) {
+            selected = await db.one('SELECT * FROM mail_messages WHERE id = ?', [selectedId]);
           }
 
-          if (resendEmailId) {
-            try {
-              const fetchRes = await fetch(`https://api.resend.com/emails/receiving/${resendEmailId}`, {
-                headers: { Authorization: `Bearer ${apiKey}` },
-              });
-
-              if (fetchRes.ok) {
-                const resendData = await fetchRes.json();
-                if (resendData.html || resendData.text) {
-                  const snippet = h.snippet(resendData.text || (resendData.html ? h.stripTags(resendData.html) : selected.subject), 160);
-                  await db.query(
-                    `UPDATE mail_messages 
-                     SET html_body = ?, text_body = ?, snippet = ?, refs = CONCAT(COALESCE(refs, ''), ' resend:', ?) 
-                     WHERE id = ?`,
-                    [resendData.html || null, resendData.text || '', snippet, resendEmailId, selectedId]
-                  );
-                  selected = await db.one('SELECT * FROM mail_messages WHERE id = ?', [selectedId]);
-                }
-              }
-            } catch (_) {}
-          }
-
-          // 2. If still needs body and IMAP is configured, try IMAP
-          if ((!selected.html_body && (!selected.text_body || selected.text_body === selected.subject)) && imapReady && selected.uid) {
+          // 2. If still needs body and IMAP is configured (and not a Resend email), try IMAP
+          if ((!selected.html_body && (!selected.text_body || selected.text_body === selected.subject)) && imapReady && selected.uid && !String(selected.refs || '').includes('resend')) {
             try {
               await syncMessage(msgFolder, selected.uid);
               selected = await db.one('SELECT * FROM mail_messages WHERE id = ?', [selectedId]);
@@ -288,10 +315,7 @@ router.post('/sync', requireAuth, requireCapability('edit'), async (req, res) =>
 
   // Sync received emails and bodies directly from Resend Receiving API
   try {
-    const apiKey = (await settings.get('mailbox.resend.api_key')) ||
-                   process.env.RESEND_API_KEY ||
-                   (await settings.get('mailbox.smtp.password')) ||
-                   Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
+    const apiKey = await getResendKey();
 
     const listRes = await fetch('https://api.resend.com/emails/receiving', {
       headers: { Authorization: `Bearer ${apiKey}` },
@@ -417,74 +441,28 @@ router.post('/:id/fetch-body', requireAuth, requireCapability('edit'), async (re
     return res.redirect('/inbox');
   }
 
-  let fetched = false;
-
-  // 1. Try Resend Receiving API
-  const apiKey = (await settings.get('mailbox.resend.api_key')) ||
-                 process.env.RESEND_API_KEY ||
-                 (await settings.get('mailbox.smtp.password')) ||
-                 Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
-
-  let resendMatch = (msg.refs || '').match(/resend:([a-zA-Z0-9_-]+)/) ||
-                    (msg.message_id || '').match(/^([a-f0-9-]{36})$/i);
-  let resendEmailId = resendMatch ? resendMatch[1] : null;
-
-  // If no resend ID is stored yet, find by matching sender + subject
-  if (!resendEmailId) {
-    try {
-      const listRes = await fetch('https://api.resend.com/emails/receiving', {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      if (listRes.ok) {
-        const listData = await listRes.json();
-        const found = (listData.data || []).find(
-          (item) => item.from === msg.from_email && item.subject === msg.subject
-        );
-        if (found) resendEmailId = found.id;
-      }
-    } catch (_) {}
-  }
-
-  if (resendEmailId) {
-    try {
-      const fetchRes = await fetch(`https://api.resend.com/emails/receiving/${resendEmailId}`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-
-      if (fetchRes.ok) {
-        const resendData = await fetchRes.json();
-        if (resendData.html || resendData.text) {
-          const snippet = h.snippet(resendData.text || (resendData.html ? h.stripTags(resendData.html) : msg.subject), 160);
-          await db.query(
-            `UPDATE mail_messages 
-             SET html_body = ?, text_body = ?, snippet = ?, refs = CONCAT(COALESCE(refs, ''), ' resend:', ?) 
-             WHERE id = ?`,
-            [resendData.html || null, resendData.text || '', snippet, resendEmailId, id]
-          );
-          req.flash('success', 'Message body loaded successfully from Resend.');
-          fetched = true;
+  // 1. Fetch body from Resend Receiving API
+  const ok = await syncResendEmailBody(msg, id);
+  if (ok) {
+    req.flash('success', 'Message body loaded successfully from Resend.');
+  } else {
+    // 2. Only fall back to IMAP if not a Resend email
+    const isResend = String(msg.refs || '').includes('resend') || String(msg.message_id || '').includes('inbound');
+    if (!isResend && msg.uid) {
+      try {
+        const provider = await getMailboxProvider();
+        const imapCfg = typeof provider.imapConfig === 'function' ? await provider.imapConfig() : {};
+        if (imapCfg.host && imapCfg.user && imapCfg.pass) {
+          await syncMessage(msg.folder, msg.uid);
+          req.flash('success', 'Message body synced from mail server.');
+        } else {
+          req.flash('warn', 'Could not retrieve email body.');
         }
-      } else {
-        const errJson = await fetchRes.json().catch(() => ({}));
-        req.flash('warn', `Resend: ${errJson.message || 'Could not fetch message body.'}`);
+      } catch (imapErr) {
+        req.flash('error', `Sync failed: ${imapErr.message}`);
       }
-    } catch (e) {
-      req.flash('error', `Resend fetch error: ${e.message}`);
-    }
-  }
-
-  // 2. If not fetched from Resend and IMAP is configured, try IMAP
-  if (!fetched && msg.uid) {
-    try {
-      const provider = await getMailboxProvider();
-      const imapCfg = typeof provider.imapConfig === 'function' ? await provider.imapConfig() : {};
-      if (imapCfg.host && imapCfg.user && imapCfg.pass) {
-        await syncMessage(msg.folder, msg.uid);
-        req.flash('success', 'Message body synced from mail server.');
-        fetched = true;
-      }
-    } catch (imapErr) {
-      if (!fetched) req.flash('error', `Sync failed: ${imapErr.message}`);
+    } else {
+      req.flash('warn', 'Could not locate this email in Resend receiving list.');
     }
   }
 

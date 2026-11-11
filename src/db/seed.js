@@ -77,7 +77,7 @@ async function seed() {
     const resendKey = Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
     const existingPass = await settings.get('delivery.smtp.pass');
     const existingMbHost = await settings.get('mailbox.smtp.host');
-    if (!existingPass || !existingMbHost || existingMbHost !== 'smtp.resend.com' || existingPass.includes('cmVfTHNN')) {
+    if (!existingPass || !existingMbHost || existingPass !== resendKey) {
       await settings.set('delivery.provider', 'smtp');
       await settings.set('delivery.smtp.host', 'smtp.resend.com');
       await settings.set('delivery.smtp.port', '465');
