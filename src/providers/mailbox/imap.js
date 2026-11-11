@@ -33,7 +33,7 @@ class ImapMailboxProvider {
   }
 
   async smtpConfig() {
-    const resendKey = Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8');
+    const resendKey = Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
     let host = (await settings.get('mailbox.smtp.host')) || (await settings.get('delivery.smtp.host')) || 'smtp.resend.com';
     const imapHost = await settings.get('mailbox.imap.host');
     if (!host && imapHost) {

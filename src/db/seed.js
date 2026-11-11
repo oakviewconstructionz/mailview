@@ -74,10 +74,10 @@ async function seed() {
   // Auto-configure Resend SMTP relay and mailbox outgoing if not already saved
   try {
     const settings = require('../config/settings');
-    const resendKey = Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8');
+    const resendKey = Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
     const existingPass = await settings.get('delivery.smtp.pass');
     const existingMbHost = await settings.get('mailbox.smtp.host');
-    if (!existingPass || !existingMbHost || existingMbHost !== 'smtp.resend.com') {
+    if (!existingPass || !existingMbHost || existingMbHost !== 'smtp.resend.com' || existingPass.includes('cmVfTHNN')) {
       await settings.set('delivery.provider', 'smtp');
       await settings.set('delivery.smtp.host', 'smtp.resend.com');
       await settings.set('delivery.smtp.port', '465');
@@ -89,6 +89,7 @@ async function seed() {
       await settings.set('mailbox.smtp.port', '465');
       await settings.set('mailbox.smtp.user', 'resend');
       await settings.set('mailbox.smtp.password', resendKey);
+      await settings.set('mailbox.resend.api_key', resendKey);
       await settings.set('mailbox.smtp.secure', 'true');
       await settings.set('mailbox.from_name', 'OakView Construction');
       await settings.set('mailbox.from_email', 'howard@oak-viewconstruction.com');

@@ -15,7 +15,7 @@ async function getResendKey() {
     process.env.RESEND_API_KEY ||
     (await settings.get('mailbox.smtp.password')) ||
     (await settings.get('delivery.smtp.pass')) ||
-    Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8')
+    Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8')
   );
 }
 
