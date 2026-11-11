@@ -1,5 +1,39 @@
 <%- include('../partials/shell-top', { title: 'Compose', active: 'inbox' }) %>
 
+<style>
+  #visualEditor {
+    min-height: 260px;
+    max-height: 520px;
+    overflow-y: auto;
+    padding: 12px 14px;
+    background: #ffffff;
+    border: 1px solid var(--line, #cbd5e1);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1e293b;
+    outline: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  #visualEditor:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  }
+  #visualEditor:empty::before {
+    content: attr(data-placeholder);
+    color: #94a3b8;
+    pointer-events: none;
+  }
+  #visualEditor a {
+    color: #2563eb !important;
+    text-decoration: underline !important;
+    font-weight: 500 !important;
+    cursor: pointer;
+  }
+</style>
+
 <div class="page-head">
   <div class="titles">
     <h1>Compose</h1>
@@ -27,6 +61,7 @@
     <input type="hidden" name="inReplyTo" value="<%= inReplyTo || '' %>">
     <input type="hidden" name="references" value="<%= references || '' %>">
     <input type="hidden" name="html" id="htmlBody" value="<%= draft.html || '' %>">
+    <textarea name="body" id="body" style="display:none;"><%= draft.body %></textarea>
 
     <div class="field">
       <label for="to">To <span class="muted">(recipient email, or leave blank to send to Bcc only)</span></label>
@@ -51,28 +86,20 @@
 
     <div class="field">
       <div class="row between" style="align-items:center;margin-bottom:6px;">
-        <label for="body" style="margin:0;font-weight:600;">Message</label>
+        <label for="visualEditor" style="margin:0;font-weight:600;">Message</label>
         <div class="row" style="gap:8px;">
-          <button type="button" class="btn btn-sm" id="openLinkModalBtn" style="padding:4px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;background:#f0f9ff;border-color:#bae6fd;color:#0284c7;font-weight:600;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <button type="button" class="btn btn-sm" id="openLinkModalBtn" style="padding:4px 11px;font-size:12px;display:inline-flex;align-items:center;gap:6px;background:#f0f9ff;border-color:#bae6fd;color:#0284c7;font-weight:600;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
             Embed Link to Text
-          </button>
-          <button type="button" class="btn btn-sm" id="togglePreviewBtn" style="padding:4px 10px;font-size:12px;color:#475569;">
-            Preview Email
           </button>
         </div>
       </div>
 
-      <textarea class="textarea" id="body" name="body" rows="12" style="width:100%;font-family:inherit;line-height:1.6;" placeholder="Type your message here..." required><%= draft.body %></textarea>
-
-      <!-- Live Preview Area -->
-      <div id="emailPreviewBox" style="display:none;margin-top:10px;padding:14px 16px;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:inset 0 1px 2px rgba(0,0,0,0.03);">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:8px;">Recipient View Preview:</div>
-        <div id="emailPreviewContent" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;"></div>
-      </div>
+      <!-- Visual Message Box: Shows real clickable blue hyperlinked text -->
+      <div id="visualEditor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Type your message here..."></div>
 
       <div class="hint" style="margin-top:6px;font-size:12px;color:#64748b;">
-        💡 To embed a link into words, highlight the text and click <strong>Embed Link to Text</strong> (or press <strong>Ctrl+K</strong>). You can also type <code>[Words](https://example.com)</code>.
+        💡 Highlight any words and click <strong>Embed Link to Text</strong> (or press <strong>Ctrl+K</strong>) to insert clickable links directly into your text.
       </div>
     </div>
 
@@ -91,7 +118,7 @@
 
 <!-- Modal Dialog for Embedding Link to Text -->
 <div id="linkModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(1px);">
-  <div style="background:#ffffff;border-radius:12px;padding:22px 24px;width:92%;max-width:440px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.2),0 10px 10px -5px rgba(0,0,0,0.08);animation:modalIn 0.15s ease-out;">
+  <div style="background:#ffffff;border-radius:12px;padding:22px 24px;width:92%;max-width:440px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.2),0 10px 10px -5px rgba(0,0,0,0.08);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <h3 style="margin:0;font-size:16px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:8px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -120,6 +147,7 @@
 <script>
 (function () {
   var form = document.getElementById('composeForm');
+  var visualEditor = document.getElementById('visualEditor');
   var bodyInput = document.getElementById('body');
   var htmlInput = document.getElementById('htmlBody');
   var openLinkBtn = document.getElementById('openLinkModalBtn');
@@ -129,19 +157,54 @@
   var applyLinkBtn = document.getElementById('applyLinkBtn');
   var cancelLinkBtn = document.getElementById('cancelLinkBtn');
   var closeLinkModalX = document.getElementById('closeLinkModalX');
-  var togglePreviewBtn = document.getElementById('togglePreviewBtn');
-  var emailPreviewBox = document.getElementById('emailPreviewBox');
-  var emailPreviewContent = document.getElementById('emailPreviewContent');
 
-  if (!form || !bodyInput) return;
+  if (!form || !visualEditor) return;
 
-  var savedStart = 0;
-  var savedEnd = 0;
+  // Initialize visual editor content
+  var initialRaw = <%- JSON.stringify(draft.body || '') %>;
+  var initialHtml = <%- JSON.stringify(draft.html || '') %>;
+
+  if (initialHtml && initialHtml.trim()) {
+    visualEditor.innerHTML = initialHtml;
+  } else if (initialRaw) {
+    // If draft.body contains markdown [text](url), convert to real <a> elements
+    var formatted = initialRaw
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/gi, function (_, label, url) {
+        return '<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;font-weight:500;">' + label + '</a>';
+      })
+      .replace(/\r?\n/g, '<br>');
+    visualEditor.innerHTML = formatted;
+  }
+
+  var savedRange = null;
+
+  function saveCurrentSelection() {
+    var sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      var r = sel.getRangeAt(0);
+      // Ensure selection is inside visualEditor
+      if (visualEditor.contains(r.commonAncestorContainer)) {
+        savedRange = r.cloneRange();
+        return;
+      }
+    }
+    savedRange = null;
+  }
+
+  function restoreSavedSelection() {
+    if (savedRange) {
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+  }
 
   function openLinkModal() {
-    savedStart = bodyInput.selectionStart || 0;
-    savedEnd = bodyInput.selectionEnd || 0;
-    var selected = bodyInput.value.substring(savedStart, savedEnd).trim();
+    saveCurrentSelection();
+    var selected = savedRange ? savedRange.toString().trim() : '';
     linkText.value = selected || '';
     linkUrl.value = '';
     linkModal.style.display = 'flex';
@@ -154,7 +217,7 @@
 
   function closeLinkModal() {
     linkModal.style.display = 'none';
-    bodyInput.focus();
+    visualEditor.focus();
   }
 
   if (openLinkBtn) openLinkBtn.addEventListener('click', openLinkModal);
@@ -166,15 +229,15 @@
     if (e.target === linkModal) closeLinkModal();
   });
 
-  // Ctrl+K shortcut in body textarea
-  bodyInput.addEventListener('keydown', function (e) {
+  // Ctrl+K / Cmd+K inside editor
+  visualEditor.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
       openLinkModal();
     }
   });
 
-  // Handle Enter key inside modal URL input
+  // Enter key inside URL field
   linkUrl.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -198,66 +261,44 @@
       text = url;
     }
 
-    var replacement = '[' + text + '](' + url + ')';
-    var fullVal = bodyInput.value;
-    var before = fullVal.substring(0, savedStart);
-    var after = fullVal.substring(savedEnd);
-    bodyInput.value = before + replacement + after;
-    
-    // Position cursor right after inserted link
-    var newCursor = before.length + replacement.length;
-    bodyInput.setSelectionRange(newCursor, newCursor);
+    restoreSavedSelection();
+
+    var a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.color = '#2563eb';
+    a.style.textDecoration = 'underline';
+    a.style.fontWeight = '500';
+    a.textContent = text;
+
+    if (savedRange) {
+      savedRange.deleteContents();
+      savedRange.insertNode(a);
+
+      // Add a trailing space so user can easily continue typing after the link
+      var space = document.createTextNode('\u00A0');
+      if (a.nextSibling) {
+        a.parentNode.insertBefore(space, a.nextSibling);
+      } else {
+        a.parentNode.appendChild(space);
+      }
+
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      var newRange = document.createRange();
+      newRange.setStartAfter(space);
+      newRange.setEndAfter(space);
+      sel.addRange(newRange);
+    } else {
+      visualEditor.appendChild(a);
+      visualEditor.appendChild(document.createTextNode('\u00A0'));
+    }
 
     closeLinkModal();
-    updatePreviewIfOpen();
   }
 
   if (applyLinkBtn) applyLinkBtn.addEventListener('click', applyLink);
-
-  // Convert markdown/links to HTML for live preview and hidden html field
-  function renderEmailHtml(raw) {
-    if (!raw) return '';
-    var escaped = raw
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    // Convert [Text](url) to styled link
-    escaped = escaped.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/gi, function (_, label, url) {
-      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;font-weight:600;">' + label + '</a>';
-    });
-
-    // Convert raw URLs (not inside tag) to links
-    escaped = escaped.replace(/(^|[\s(])((?:https?:\/\/)[^\s<)]+)/gi, function (_, prefix, url) {
-      return prefix + '<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">' + url + '</a>';
-    });
-
-    // Handle line breaks
-    return escaped.replace(/\r?\n/g, '<br>');
-  }
-
-  function updatePreviewIfOpen() {
-    if (emailPreviewBox.style.display !== 'none') {
-      emailPreviewContent.innerHTML = renderEmailHtml(bodyInput.value) || '<em style="color:#94a3b8;">(Message is empty)</em>';
-    }
-  }
-
-  if (togglePreviewBtn) {
-    togglePreviewBtn.addEventListener('click', function () {
-      if (emailPreviewBox.style.display === 'none') {
-        emailPreviewBox.style.display = 'block';
-        togglePreviewBtn.textContent = 'Hide Preview';
-        updatePreviewIfOpen();
-      } else {
-        emailPreviewBox.style.display = 'none';
-        togglePreviewBtn.textContent = 'Preview Email';
-      }
-    });
-  }
-
-  bodyInput.addEventListener('input', function () {
-    updatePreviewIfOpen();
-  });
 
   form.addEventListener('submit', function (e) {
     ['to', 'cc', 'bcc'].forEach(function (id) {
@@ -266,6 +307,7 @@
         input.value = input.value.replace(/@\.com\b/gi, '@gmail.com').replace(/@com\b/gi, '@gmail.com');
       }
     });
+
     var toVal = (document.getElementById('to').value || '').trim();
     var ccVal = (document.getElementById('cc').value || '').trim();
     var bccVal = (document.getElementById('bcc').value || '').trim();
@@ -275,11 +317,18 @@
       return;
     }
 
-    // Auto-generate rich HTML with clickable embedded links
-    if (htmlInput && bodyInput.value) {
-      var innerHtml = renderEmailHtml(bodyInput.value);
-      htmlInput.value = '<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">' + innerHtml + '</body></html>';
+    var editorText = (visualEditor.innerText || '').trim();
+    var editorHtml = visualEditor.innerHTML || '';
+    if (!editorText && !editorHtml) {
+      e.preventDefault();
+      alert('Please type a message before sending.');
+      visualEditor.focus();
+      return;
     }
+
+    // Sync content to inputs
+    bodyInput.value = visualEditor.innerText;
+    htmlInput.value = '<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">' + editorHtml + '</body></html>';
 
     var btn = document.getElementById('sendBtn');
     if (btn) {
