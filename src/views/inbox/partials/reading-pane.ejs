@@ -64,7 +64,13 @@
 
 <div class="read-body">
   <% if (selected.html_body) { %>
-    <iframe sandbox="" srcdoc="<%= selected.html_body %>" title="Message body"></iframe>
+    <iframe
+      id="msg-frame"
+      sandbox="allow-same-origin allow-popups"
+      srcdoc="<%= selected.html_body %>"
+      title="Message body"
+      onload="(function(f){try{var h=f.contentDocument.documentElement.scrollHeight;f.style.height=(Math.max(h,200))+'px';}catch(e){}})(this)"
+    ></iframe>
   <% } else if (selected.text_body) { %>
     <pre style="white-space:pre-wrap;word-wrap:break-word;margin:0;font-family:inherit;"><%= selected.text_body %></pre>
   <% } else { %>

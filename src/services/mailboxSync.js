@@ -312,4 +312,5 @@ module.exports = {
   syncMessages,
   syncMessage,
   upsertMessage,
+  storeAttachments,
 };
