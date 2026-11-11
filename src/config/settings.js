@@ -44,6 +44,7 @@ const REGISTRY = {
   'mailbox.smtp.secure':          { env: 'SMTP_SECURE', secret: false, group: 'mailbox_smtp', label: 'Use SSL/TLS', type: 'bool' },
   'mailbox.smtp.user':            { env: 'SMTP_USER', secret: false, group: 'mailbox_smtp', label: 'Outgoing SMTP username' },
   'mailbox.smtp.password':        { env: 'SMTP_PASSWORD', secret: true, group: 'mailbox_smtp', label: 'Outgoing SMTP password' },
+  'mailbox.resend.api_key':       { env: 'RESEND_API_KEY', secret: true, group: 'mailbox_smtp', label: 'Resend API Key (Full access, for receiving email bodies)' },
 
   'mailbox.from_name':            { env: 'MAILBOX_FROM_NAME', secret: false, group: 'mailbox_identity', label: 'Sender name' },
   'mailbox.from_email':           { env: 'MAILBOX_FROM_EMAIL', secret: false, group: 'mailbox_identity', label: 'Sender email address' },

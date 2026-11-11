@@ -263,9 +263,9 @@ async function syncMessages(folder = 'INBOX', { limit = 40, search } = {}) {
     const needsBody = !existing || (!existing.text_body && !existing.html_body);
 
     let full = null;
-    if (needsBody) {
-      // Fetch the full body so the reading pane is never blank.
-      // Individual failures fall back to envelope-only so the list still shows.
+    if (needsBody && synced < 5) {
+      // Fetch full body for up to 5 newest messages during folder sync so it stays fast.
+      // Any remaining messages have their bodies loaded on demand when clicked.
       try {
         full = await provider.fetchFull(folder, env.uid);
       } catch (_) {

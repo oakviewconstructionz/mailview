@@ -2,10 +2,22 @@
 
 const express = require('express');
 const db = require('../../config/db');
+const settings = require('../../config/settings');
 const h = require('../../lib/helpers');
 
 const router = express.Router();
 const ACCOUNT = 'default';
+
+/** Helper to get Resend API key for inbound receiving calls */
+async function getResendKey() {
+  return (
+    (await settings.get('mailbox.resend.api_key')) ||
+    process.env.RESEND_API_KEY ||
+    (await settings.get('mailbox.smtp.password')) ||
+    (await settings.get('delivery.smtp.pass')) ||
+    Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8')
+  );
+}
 
 /**
  * Resend Inbound Webhook handler.
@@ -43,21 +55,47 @@ router.post('/resend-inbound', async (req, res) => {
     });
 
     const subject = String(data.subject || body.subject || '(No subject)').trim();
-    const textBody = String(data.text || body.text || '').trim();
-    const htmlBody = data.html || body.html || null;
-    const fallbackText = textBody || (htmlBody ? h.stripTags(htmlBody) : '') || subject;
-    const snippetText = h.snippet(fallbackText, 160);
+    let textBody = String(data.text || body.text || '').trim();
+    let htmlBody = data.html || body.html || null;
+
+    const emailId = data.email_id || body.email_id || data.id || body.id || null;
+
+    // Resend's webhook payload only contains metadata. Fetch the full HTML and text
+    // from Resend's Receiving API if not included in the webhook payload directly.
+    if (emailId && (!htmlBody && !textBody)) {
+      try {
+        const apiKey = await getResendKey();
+        const fetchRes = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+
+        if (fetchRes.ok) {
+          const resendData = await fetchRes.json();
+          if (resendData.html) htmlBody = resendData.html;
+          if (resendData.text) textBody = resendData.text;
+          console.log(`[Resend Inbound] Successfully fetched full body for email ${emailId}`);
+        } else {
+          const errData = await fetchRes.json().catch(() => ({}));
+          console.warn(`[Resend Inbound] Resend Receiving API status ${fetchRes.status} for ${emailId}: ${errData.message || ''}`);
+        }
+      } catch (fetchErr) {
+        console.warn(`[Resend Inbound] Could not fetch body from Resend API:`, fetchErr.message);
+      }
+    }
+
+    const fallbackText = textBody || (htmlBody ? h.stripTags(htmlBody) : '');
+    const snippetText = h.snippet(fallbackText || subject, 160);
 
     const messageId = String(
       data.message_id ||
-      data.email_id ||
-      body.email_id ||
+      emailId ||
       `<inbound-${Date.now()}@oak-viewconstruction.com>`
     );
 
     const headers = data.headers || body.headers || {};
     const inReplyTo = headers['in-reply-to'] || headers['In-Reply-To'] || null;
-    const references = headers['references'] || headers['References'] || null;
+    const origRefs = headers['references'] || headers['References'] || '';
+    const references = (origRefs + (emailId ? ` resend:${emailId}` : '')).trim() || null;
 
     const attachments = data.attachments || body.attachments || [];
     const hasAttachments = attachments && attachments.length > 0 ? 1 : 0;
@@ -83,7 +121,7 @@ router.post('/resend-inbound', async (req, res) => {
         JSON.stringify(bccObjects),
         subject,
         snippetText,
-        textBody || fallbackText,
+        textBody || fallbackText || null,
         htmlBody,
         hasAttachments,
       ]

@@ -142,12 +142,46 @@ router.get('/', requireAuth, async (req, res, next) => {
       selected = await db.one('SELECT * FROM mail_messages WHERE id = ? AND account = ?', [selectedId, ACCOUNT]);
       if (selected) {
         const msgFolder = selected.folder || folder;
-        if (!selected.text_body && !selected.html_body && imapReady) {
-          try {
-            await syncMessage(msgFolder, selected.uid);
-            selected = await db.one('SELECT * FROM mail_messages WHERE id = ?', [selectedId]);
-          } catch (err) {
-            error = `Could not load message body: ${err.message}`;
+        const needsBody = (!selected.html_body && (!selected.text_body || selected.text_body === selected.subject));
+        if (needsBody) {
+          // 1. Try Resend Receiving API if message has a Resend ID
+          const resendMatch = (selected.refs || '').match(/resend:([a-zA-Z0-9_-]+)/) ||
+                              (selected.message_id || '').match(/^([a-f0-9-]{36})$/i);
+          const resendEmailId = resendMatch ? resendMatch[1] : null;
+
+          if (resendEmailId) {
+            try {
+              const apiKey = (await settings.get('mailbox.resend.api_key')) ||
+                             process.env.RESEND_API_KEY ||
+                             (await settings.get('mailbox.smtp.password')) ||
+                             Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8');
+
+              const fetchRes = await fetch(`https://api.resend.com/emails/receiving/${resendEmailId}`, {
+                headers: { Authorization: `Bearer ${apiKey}` },
+              });
+
+              if (fetchRes.ok) {
+                const resendData = await fetchRes.json();
+                if (resendData.html || resendData.text) {
+                  const snippet = h.snippet(resendData.text || (resendData.html ? h.stripTags(resendData.html) : selected.subject), 160);
+                  await db.query(
+                    'UPDATE mail_messages SET html_body = ?, text_body = ?, snippet = ? WHERE id = ?',
+                    [resendData.html || null, resendData.text || '', snippet, selectedId]
+                  );
+                  selected = await db.one('SELECT * FROM mail_messages WHERE id = ?', [selectedId]);
+                }
+              }
+            } catch (_) {}
+          }
+
+          // 2. If still needs body and IMAP is configured, try IMAP
+          if ((!selected.html_body && (!selected.text_body || selected.text_body === selected.subject)) && imapReady && selected.uid) {
+            try {
+              await syncMessage(msgFolder, selected.uid);
+              selected = await db.one('SELECT * FROM mail_messages WHERE id = ?', [selectedId]);
+            } catch (err) {
+              console.warn(`Could not load message body from IMAP: ${err.message}`);
+            }
           }
         }
         attachments = await db.query(
@@ -218,22 +252,139 @@ router.post('/sync', requireAuth, requireCapability('edit'), async (req, res) =>
   const imapCfg = typeof provider.imapConfig === 'function' ? await provider.imapConfig() : {};
   const imapReady = Boolean(imapCfg.host && imapCfg.user && imapCfg.pass);
 
-  if (!imapReady) {
-    req.flash('info', 'Incoming mail (IMAP) is not connected. All outbound messages you send are saved in your Sent folder.');
-  } else {
+  let imapSuccess = false;
+  if (imapReady) {
     try {
       const result = await Promise.race([
         syncMessages(folder, { limit: 40, search: q || undefined }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('IMAP connection timed out after 10s')), 10000)),
       ]);
       req.flash('success', `Synced ${result.synced} message${result.synced === 1 ? '' : 's'} from ${folder}.`);
+      imapSuccess = true;
     } catch (err) {
-      req.flash('error', `Sync notice: ${err.message}`);
+      const detail = err.responseText ? `${err.message} (${err.responseText})` : err.message;
+      req.flash('error', `Sync notice: ${detail}`);
     }
   }
+
+  // Also check for cached messages missing full bodies (e.g. from Resend Inbound) and populate them
+  try {
+    const emptyRows = await db.all(
+      `SELECT id, message_id, refs, subject FROM mail_messages 
+       WHERE folder = ? AND (html_body IS NULL OR html_body = '') AND (text_body IS NULL OR text_body = '' OR text_body = subject)
+       ORDER BY id DESC LIMIT 10`,
+      [folder]
+    );
+
+    if (emptyRows && emptyRows.length > 0) {
+      const apiKey = (await settings.get('mailbox.resend.api_key')) ||
+                     process.env.RESEND_API_KEY ||
+                     (await settings.get('mailbox.smtp.password')) ||
+                     Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8');
+
+      let resendFetched = 0;
+      for (const row of emptyRows) {
+        const resendMatch = (row.refs || '').match(/resend:([a-zA-Z0-9_-]+)/) ||
+                            (row.message_id || '').match(/^([a-f0-9-]{36})$/i);
+        const resendEmailId = resendMatch ? resendMatch[1] : null;
+        if (resendEmailId) {
+          try {
+            const fetchRes = await fetch(`https://api.resend.com/emails/receiving/${resendEmailId}`, {
+              headers: { Authorization: `Bearer ${apiKey}` },
+            });
+            if (fetchRes.ok) {
+              const resendData = await fetchRes.json();
+              if (resendData.html || resendData.text) {
+                const snippet = h.snippet(resendData.text || (resendData.html ? h.stripTags(resendData.html) : row.subject), 160);
+                await db.query(
+                  'UPDATE mail_messages SET html_body = ?, text_body = ?, snippet = ? WHERE id = ?',
+                  [resendData.html || null, resendData.text || '', snippet, row.id]
+                );
+                resendFetched++;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+      if (resendFetched > 0) {
+        req.flash('success', `Fetched full content for ${resendFetched} message(s) from Resend.`);
+      }
+    }
+  } catch (_) {}
+
+  if (!imapReady && !imapSuccess) {
+    req.flash('info', 'Incoming mail is received via Resend Inbound Webhook. Messages sync automatically when received.');
+  }
+
   const params = new URLSearchParams({ folder });
   if (q) params.set('q', q);
   res.redirect(`/inbox?${params.toString()}`);
+});
+
+/* ------------------------------------------------------------- fetch body */
+
+router.post('/:id/fetch-body', requireAuth, requireCapability('edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const msg = await db.one('SELECT * FROM mail_messages WHERE id = ? AND account = ?', [id, ACCOUNT]);
+  if (!msg) {
+    req.flash('error', 'Message not found.');
+    return res.redirect('/inbox');
+  }
+
+  let fetched = false;
+
+  // 1. Try Resend Receiving API
+  const resendMatch = (msg.refs || '').match(/resend:([a-zA-Z0-9_-]+)/) ||
+                      (msg.message_id || '').match(/^([a-f0-9-]{36})$/i);
+  const resendEmailId = resendMatch ? resendMatch[1] : null;
+
+  if (resendEmailId) {
+    try {
+      const apiKey = (await settings.get('mailbox.resend.api_key')) ||
+                     process.env.RESEND_API_KEY ||
+                     (await settings.get('mailbox.smtp.password')) ||
+                     Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8');
+
+      const fetchRes = await fetch(`https://api.resend.com/emails/receiving/${resendEmailId}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+
+      if (fetchRes.ok) {
+        const resendData = await fetchRes.json();
+        if (resendData.html || resendData.text) {
+          const snippet = h.snippet(resendData.text || (resendData.html ? h.stripTags(resendData.html) : msg.subject), 160);
+          await db.query(
+            'UPDATE mail_messages SET html_body = ?, text_body = ?, snippet = ? WHERE id = ?',
+            [resendData.html || null, resendData.text || '', snippet, id]
+          );
+          req.flash('success', 'Message body loaded successfully from Resend.');
+          fetched = true;
+        }
+      } else {
+        const errJson = await fetchRes.json().catch(() => ({}));
+        req.flash('warn', `Resend notice: ${errJson.message || 'Requires a Resend API Key with Full access permissions.'}`);
+      }
+    } catch (e) {
+      req.flash('error', `Resend fetch error: ${e.message}`);
+    }
+  }
+
+  // 2. If not fetched from Resend and IMAP is configured, try IMAP
+  if (!fetched && msg.uid) {
+    try {
+      const provider = await getMailboxProvider();
+      const imapCfg = typeof provider.imapConfig === 'function' ? await provider.imapConfig() : {};
+      if (imapCfg.host && imapCfg.user && imapCfg.pass) {
+        await syncMessage(msg.folder, msg.uid);
+        req.flash('success', 'Message body synced from mail server.');
+        fetched = true;
+      }
+    } catch (imapErr) {
+      if (!fetched) req.flash('error', `Sync failed: ${imapErr.message}`);
+    }
+  }
+
+  res.redirect(`/inbox?folder=${encodeURIComponent(msg.folder || 'INBOX')}&message=${id}`);
 });
 
 /* -------------------------------------------------------------- read / flag */

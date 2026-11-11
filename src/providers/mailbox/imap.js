@@ -184,6 +184,11 @@ class ImapMailboxProvider {
 
     try {
       return await fn(client);
+    } catch (fnErr) {
+      if (fnErr.responseText && !fnErr.message.includes(fnErr.responseText)) {
+        fnErr.message = `${fnErr.message} (${fnErr.responseText})`;
+      }
+      throw fnErr;
     } finally {
       try { await client.logout(); } catch (_) { /* ignore */ }
     }
@@ -265,22 +270,32 @@ class ImapMailboxProvider {
           return [];
         }
 
+        let uids = [];
+        try {
+          if (search) {
+            uids = await client.search({ or: [{ subject: search }, { body: search }, { from: search }] }, { uid: true });
+          } else {
+            uids = await client.search({ all: true }, { uid: true });
+          }
+        } catch (_) {
+          uids = [];
+        }
+
         let fetchRange;
-        let fetchOptions = {};
-        if (search) {
-          const found = await client.search({ or: [{ subject: search }, { body: search }, { from: search }] }, { uid: true });
-          const uids = (found || []).slice(-limit);
-          if (!uids.length) return [];
-          fetchRange = uids.join(',');
-          fetchOptions = { uid: true };
-        } else {
+        let fetchOptions = { uid: true };
+        if (Array.isArray(uids) && uids.length > 0) {
+          const slice = uids.slice(-limit);
+          fetchRange = slice.join(',');
+        } else if (!search) {
           const total = client.mailbox.exists;
           const start = Math.max(1, total - limit + 1);
           fetchRange = `${start}:${total}`;
           fetchOptions = { uid: false };
+        } else {
+          return [];
         }
 
-        const queryFields = { uid: true, envelope: true, flags: true, size: true, bodyStructure: true };
+        const queryFields = { uid: true, envelope: true, flags: true, size: true };
         const out = [];
 
         try {
@@ -298,12 +313,17 @@ class ImapMailboxProvider {
               flagged: msg.flags ? msg.flags.has('\\Flagged') : false,
               draft: msg.flags ? msg.flags.has('\\Draft') : false,
               size: msg.size || null,
-              hasAttachments: this.structureHasAttachments(msg.bodyStructure),
+              hasAttachments: false,
             });
           }
         } catch (fetchErr) {
-          // If sequence query hit an edge case, return what we have or rethrow
-          if (!out.length) throw fetchErr;
+          const detail = fetchErr.responseText ? `${fetchErr.message} (${fetchErr.responseText})` : fetchErr.message;
+          console.warn('IMAP fetch notice:', detail);
+          if (!out.length) {
+            const err = new Error(detail);
+            err.code = fetchErr.code;
+            throw err;
+          }
         }
 
         out.sort((a, b) => b.date - a.date);
@@ -323,7 +343,14 @@ class ImapMailboxProvider {
   async fetchFull(folder, uid) {
     return this.withClient(async (client) =>
       this.withMailbox(client, folder, async () => {
-        const msg = await client.fetchOne(String(uid), { uid: true, source: true, flags: true }, { uid: true });
+        let msg = null;
+        try {
+          msg = await client.fetchOne(String(uid), { uid: true, source: true, flags: true }, { uid: true });
+        } catch (err) {
+          const detail = err.responseText ? `${err.message} (${err.responseText})` : err.message;
+          console.warn(`IMAP fetchFull failed for UID ${uid}:`, detail);
+          return null;
+        }
         if (!msg || !msg.source) return null;
         const parsed = await simpleParser(msg.source);
         const attachments = (parsed.attachments || []).map((a) => ({

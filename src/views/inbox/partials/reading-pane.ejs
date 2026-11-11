@@ -71,10 +71,19 @@
       title="Message body"
       onload="(function(f){try{var h=f.contentDocument.documentElement.scrollHeight;f.style.height=(Math.max(h,200))+'px';}catch(e){}})(this)"
     ></iframe>
-  <% } else if (selected.text_body) { %>
+  <% } else if (selected.text_body && selected.text_body.trim() !== String(selected.subject || '').trim()) { %>
     <pre style="white-space:pre-wrap;word-wrap:break-word;margin:0;font-family:inherit;"><%= selected.text_body %></pre>
   <% } else { %>
-    <p class="muted">This message has no body content cached. Try Sync to fetch it.</p>
+    <div style="padding:20px;background:var(--bg-subtle, #f8f9fa);border:1px dashed var(--border, #e2e8f0);border-radius:8px;margin-top:10px;">
+      <p style="margin:0 0 6px 0;font-weight:600;color:var(--ink, #1a202c);">Message body not yet loaded</p>
+      <p class="muted" style="margin:0 0 14px 0;font-size:13px;line-height:1.5;">
+        This email was received via Resend webhook. To load the full message content, click below or verify your Resend API Key has <strong>Full access</strong> in Settings → Integrations.
+      </p>
+      <form method="post" action="/inbox/<%= selected.id %>/fetch-body">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="btn btn-sm btn-primary" type="submit">Fetch body now</button>
+      </form>
+    </div>
   <% } %>
 
   <% if (attachments && attachments.length) { %>
