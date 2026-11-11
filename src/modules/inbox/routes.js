@@ -885,18 +885,21 @@ const handleComposePost = async (req, res, next) => {
       };
     }
     // Fill {{tokens}}, then swap any hardcoded address after `eml=` for the recipient's own.
+    // Note: for plain text body only — do NOT personalise raw HTML as it corrupts <a> tag attributes.
     let textFinal = h.mergeRecipientEmailInLinks(h.personalise(body, data), data.email);
-    let htmlFinal = html ? h.mergeRecipientEmailInLinks(h.personalise(html, data), data.email) : undefined;
+    let htmlFinal;
 
-    // Convert markdown [text](url) to HTML links, or generate htmlFinal from textFinal if html was omitted
-    if (!htmlFinal && textFinal) {
+    if (html && html.trim()) {
+      // HTML came from the visual editor — it already has real <a href="..."> tags.
+      // Only do the eml= swap (safe — it only touches query params), never escape or re-encode.
+      htmlFinal = h.mergeRecipientEmailInLinks(html, data.email);
+    } else if (textFinal) {
+      // No HTML from editor — build HTML from plain text, converting [text](url) markdown and bare URLs.
       let converted = h.escapeHtml(textFinal)
         .replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/gi, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;font-weight:500;">$1</a>')
         .replace(/(^|[\s(])((?:https?:\/\/)[^\s<)]+)/gi, '$1<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">$2</a>')
         .replace(/\r?\n/g, '<br>');
       htmlFinal = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">${converted}</body></html>`;
-    } else if (htmlFinal) {
-      htmlFinal = htmlFinal.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/gi, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;font-weight:500;">$1</a>');
     }
 
     // Clean plain-text fallback: convert [text](url) to "text (url)"
