@@ -1,10 +1,14 @@
+<%
+  var h = (typeof h !== 'undefined' && h) ? h : ((typeof locals !== 'undefined' && locals.h) ? locals.h : (function(){ try { return require(require('path').join(process.cwd(), 'src', 'lib', 'helpers')); } catch(_) { return {}; } })());
+  var token = (typeof csrfToken !== 'undefined' && csrfToken) ? csrfToken : ((typeof locals !== 'undefined' && locals.csrfToken) ? locals.csrfToken : '');
+%>
 <% if (!messages.length) { %>
   <div style="padding:32px 20px;">
     <%- include('../../partials/empty', { heading: 'No messages', message: 'Nothing matches this folder or search.' }) %>
   </div>
 <% } else { %>
   <form method="post" action="/inbox/bulk-delete" id="inboxBulkForm">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="_csrf" value="<%= token %>">
     <input type="hidden" name="folder" value="<%= folder %>">
     <input type="hidden" name="q" value="<%= q || '' %>">
 

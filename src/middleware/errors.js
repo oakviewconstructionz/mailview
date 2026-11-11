@@ -31,7 +31,7 @@ function errorHandler(err, req, res, next) {
   return res.status(status).render('errors/500', {
     title: 'Something went wrong',
     active: '',
-    message: status < 500 ? err.message : null,
+    message: err.message || 'An unexpected error occurred.',
   });
 }
 

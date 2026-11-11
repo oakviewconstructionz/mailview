@@ -1,4 +1,5 @@
 <%
+  var h = (typeof h !== 'undefined' && h) ? h : ((typeof locals !== 'undefined' && locals.h) ? locals.h : (function(){ try { return require(require('path').join(process.cwd(), 'src', 'lib', 'helpers')); } catch(_) { return {}; } })());
   var moveFolders = (typeof folders !== 'undefined' && folders && folders.length) ? folders : null;
   var token = (typeof csrfToken !== 'undefined' && csrfToken) ? csrfToken : ((typeof locals !== 'undefined' && locals.csrfToken) ? locals.csrfToken : '');
   var isConfigured = (typeof configured !== 'undefined') ? configured : false;

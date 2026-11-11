@@ -55,13 +55,13 @@
       </div>
     </div>
 
-    <%- include('partials/message-list', { messages: messages, folder: folder, q: q, selected: selected }) %>
+    <%- include('partials/message-list', { messages: messages, folder: folder, q: q, selected: selected, h: (typeof h !== 'undefined' ? h : null), csrfToken: (typeof csrfToken !== 'undefined' ? csrfToken : '') }) %>
   </section>
 
   <!-- Reading pane -->
   <section class="inbox-read">
     <% if (selected) { %>
-      <%- include('partials/reading-pane', { selected: selected, attachments: attachments, folder: folder, folders: folders, configured: configured, csrfToken: (typeof csrfToken !== 'undefined' ? csrfToken : '') }) %>
+      <%- include('partials/reading-pane', { selected: selected, attachments: attachments, folder: folder, folders: folders, configured: configured, h: (typeof h !== 'undefined' ? h : null), csrfToken: (typeof csrfToken !== 'undefined' ? csrfToken : '') }) %>
     <% } else { %>
       <%- include('../partials/empty', {
         heading: messages.length ? 'Select a message' : 'Nothing here yet',
