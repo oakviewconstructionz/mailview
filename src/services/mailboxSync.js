@@ -253,7 +253,27 @@ async function syncMessages(folder = 'INBOX', { limit = 40, search } = {}) {
 
   let synced = 0;
   for (const env of envelopes) {
-    await upsertMessage(folder, env, null);
+    // Check whether we already have a body cached for this uid to avoid
+    // redundant IMAP round-trips on subsequent syncs.
+    const existing = await db.one(
+      'SELECT text_body, html_body FROM mail_messages WHERE account = ? AND folder = ? AND uid = ? LIMIT 1',
+      [ACCOUNT, folder, env.uid]
+    ).catch(() => null);
+
+    const needsBody = !existing || (!existing.text_body && !existing.html_body);
+
+    let full = null;
+    if (needsBody) {
+      // Fetch the full body so the reading pane is never blank.
+      // Individual failures fall back to envelope-only so the list still shows.
+      try {
+        full = await provider.fetchFull(folder, env.uid);
+      } catch (_) {
+        // body fetch failed — still cache the envelope so the message appears in the list
+      }
+    }
+
+    await upsertMessage(folder, env, full);
     synced += 1;
   }
 

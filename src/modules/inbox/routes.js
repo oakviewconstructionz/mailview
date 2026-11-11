@@ -121,10 +121,11 @@ router.get('/', requireAuth, async (req, res, next) => {
 
       if (shouldSync) {
         try {
-          // Strictly capped at 4s so page loads immediately and Railway proxy never times out
+          // Allow up to 8s for body fetches; limit to 15 messages per page-load
+          // sync so new bodies are fetched without blowing the Railway timeout.
           await Promise.race([
-            syncMessages(folder, { limit: 40, search: q || undefined }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('IMAP timeout')), 4000)),
+            syncMessages(folder, { limit: 15, search: q || undefined }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('IMAP timeout')), 8000)),
           ]);
           messages = await readCachedMessages(folder, q);
         } catch (err) {
@@ -141,7 +142,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       selected = await db.one('SELECT * FROM mail_messages WHERE id = ? AND account = ?', [selectedId, ACCOUNT]);
       if (selected) {
         const msgFolder = selected.folder || folder;
-        if (!selected.text_body && !selected.html_body && configured) {
+        if (!selected.text_body && !selected.html_body && imapReady) {
           try {
             await syncMessage(msgFolder, selected.uid);
             selected = await db.one('SELECT * FROM mail_messages WHERE id = ?', [selectedId]);
@@ -223,7 +224,7 @@ router.post('/sync', requireAuth, requireCapability('edit'), async (req, res) =>
     try {
       const result = await Promise.race([
         syncMessages(folder, { limit: 40, search: q || undefined }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('IMAP connection timed out after 5s')), 5000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('IMAP connection timed out after 10s')), 10000)),
       ]);
       req.flash('success', `Synced ${result.synced} message${result.synced === 1 ? '' : 's'} from ${folder}.`);
     } catch (err) {

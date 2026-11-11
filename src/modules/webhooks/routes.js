@@ -120,3 +120,4 @@ router.get('/resend-inbound', (req, res) => {
 });
 
 module.exports = router;
+
