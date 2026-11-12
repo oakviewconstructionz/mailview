@@ -57,12 +57,10 @@
     </form>
   <% } %>
 
-  <% if (isConfigured) { %>
-    <form method="post" action="/inbox/<%= selected.id %>/delete" data-confirm="Delete this message from the mailbox?">
-      <input type="hidden" name="_csrf" value="<%= token %>">
-      <button class="btn btn-sm btn-danger" type="submit">Delete</button>
-    </form>
-  <% } %>
+  <form method="post" action="/inbox/<%= selected.id %>/delete" data-confirm="Delete this message?">
+    <input type="hidden" name="_csrf" value="<%= token %>">
+    <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+  </form>
 </div>
 
 <div class="read-body">

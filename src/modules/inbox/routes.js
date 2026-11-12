@@ -578,16 +578,14 @@ router.post('/:id/delete', requireAuth, requireCapability('edit'), async (req, r
     }
 
     const provider = await getMailboxProvider();
-    if (!(await provider.isConfigured())) {
-      req.flash('error', 'Mailbox is not configured. Add IMAP credentials in Settings → Integrations.');
-      return res.redirect(backTo(req));
-    }
+    const configured = await provider.isConfigured();
 
-    try {
-      await provider.remove(msg.folder, msg.uid);
-    } catch (err) {
-      req.flash('error', `Delete failed: ${err.message}`);
-      return res.redirect(backTo(req));
+    if (configured && msg.uid) {
+      try {
+        await provider.remove(msg.folder, msg.uid);
+      } catch (err) {
+        req.flash('warn', `Deleted locally, but could not delete on the mail server: ${err.message}`);
+      }
     }
 
     await db.query('DELETE FROM mail_messages WHERE id = ?', [id]);
