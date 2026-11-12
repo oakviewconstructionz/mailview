@@ -149,6 +149,7 @@ async function effectiveConfig(campaign) {
       : await settings.getInt('campaigns.batch_interval_seconds', 10),
     maxRecipients: campaign.max_recipients || (await settings.getInt('campaigns.max_recipients_per_campaign', 3000)),
     monthlyLimit: await settings.getInt('delivery.monthly_email_limit', 0),
+    dailyLimit: await settings.getInt('delivery.daily_email_limit', 0),
   };
 }
 
@@ -166,6 +167,15 @@ async function sentThisMonth() {
   return Math.max(Number(events.c) || 0, Number(row.c) || 0);
 }
 
+/** Emails recorded as sent today (UTC calendar day). */
+async function sentToday() {
+  const events = await db.one(`
+    SELECT COUNT(*) AS c FROM campaign_events
+     WHERE type = 'send' AND created_at >= CURDATE()
+  `);
+  return Number(events.c) || 0;
+}
+
 /**
  * Pre-flight check run BEFORE a campaign can be launched.
  * Combines the provider's real rate-limit headers with the admin-configured
@@ -178,6 +188,7 @@ async function preflight(campaign) {
   const audience = await resolveAudience(campaign);
   const quota = typeof provider.getQuota === 'function' ? await provider.getQuota() : {};
   const used = await sentThisMonth();
+  const usedToday = await sentToday();
 
   const checks = [];
   const add = (label, ok, detail, blocking = true) => checks.push({ label, ok, detail, blocking });
@@ -201,6 +212,17 @@ async function preflight(campaign) {
     add('Monthly allowance', true, 'No monthly limit configured (0 = unlimited/unknown). Set your plan limit in Settings for a hard guarantee.', false);
   }
 
+  if (cfg.dailyLimit > 0) {
+    const remainingToday = Math.max(0, cfg.dailyLimit - usedToday);
+    const ok = audience.length <= remainingToday;
+    add(`Within daily allowance (${cfg.dailyLimit})`, ok,
+      ok
+        ? `${remainingToday} of ${cfg.dailyLimit} remaining today.`
+        : `Only ${remainingToday} of ${cfg.dailyLimit} daily sends remain today — not enough for ${audience.length} recipients. Try again tomorrow or raise the limit in Settings.`);
+  } else {
+    add('Daily allowance', true, 'No daily limit configured (0 = unlimited). Set your plan limit in Settings.', false);
+  }
+
   if (quota && quota.requestRateLimit && quota.requestRateLimit.limit) {
     add('Provider request rate', true,
       `Provider allows ${quota.requestRateLimit.limit} API requests/min; we throttle to ${cfg.ratePerMinute}/min.`, false);
@@ -213,6 +235,7 @@ async function preflight(campaign) {
     audienceCount: audience.length,
     limits: cfg,
     used,
+    usedToday,
     totalRecipients: audience.length,
   };
 }

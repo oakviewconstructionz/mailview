@@ -55,6 +55,7 @@ const REGISTRY = {
   'campaigns.batch_interval_seconds': { env: 'CAMPAIGN_BATCH_INTERVAL', secret: false, group: 'delivery', label: 'Pause between batches (seconds)', type: 'number' },
   'campaigns.max_recipients_per_campaign': { env: 'CAMPAIGN_MAX_RECIPIENTS', secret: false, group: 'delivery', label: 'Max recipients per campaign', type: 'number' },
   'delivery.monthly_email_limit':  { env: 'DELIVERY_MONTHLY_LIMIT', secret: false, group: 'delivery', label: 'Provider monthly email limit (0 = unlimited)', type: 'number' },
+  'delivery.daily_email_limit':    { env: 'DELIVERY_DAILY_LIMIT',   secret: false, group: 'delivery', label: 'Daily email limit (0 = unlimited)', type: 'number' },
 };
 
 function envFallback(key) {

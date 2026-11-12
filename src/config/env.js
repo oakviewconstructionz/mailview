@@ -92,6 +92,7 @@ const env = {
     batchIntervalSeconds: int(process.env.CAMPAIGN_BATCH_INTERVAL, 10),
     maxRecipientsPerCampaign: int(process.env.CAMPAIGN_MAX_RECIPIENTS, 3000),
     monthlyEmailLimit: int(process.env.DELIVERY_MONTHLY_LIMIT, 0),
+    dailyEmailLimit: int(process.env.DELIVERY_DAILY_LIMIT, 0),
     runWorkerInWeb: bool(process.env.RUN_WORKER_IN_WEB, true),
   },
 };
