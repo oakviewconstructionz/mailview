@@ -19,7 +19,7 @@ const PROVIDERS = {
 };
 
 const LABELS = {
-  smtp: 'SMTP relay (Resend)',
+  smtp: 'Google Workspace SMTP (smtp.gmail.com)',
   sender: 'Sender.net',
 };
 

@@ -33,15 +33,14 @@ class ImapMailboxProvider {
   }
 
   async smtpConfig() {
-    const resendKey = Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
-    let host = (await settings.get('mailbox.smtp.host')) || (await settings.get('delivery.smtp.host')) || 'smtp.resend.com';
+    let host = (await settings.get('mailbox.smtp.host')) || (await settings.get('delivery.smtp.host')) || 'smtp.gmail.com';
     const imapHost = await settings.get('mailbox.imap.host');
     if (!host && imapHost) {
       if (imapHost.toLowerCase().includes('gmail')) host = 'smtp.gmail.com';
       else if (imapHost.toLowerCase().startsWith('imap.')) host = imapHost.replace(/^imap\./i, 'smtp.');
     }
-    const user = (await settings.get('mailbox.smtp.user')) || (await settings.get('delivery.smtp.user')) || 'resend';
-    let pass = (await settings.get('mailbox.smtp.password')) || (await settings.get('delivery.smtp.pass')) || resendKey;
+    const user = (await settings.get('mailbox.smtp.user')) || (await settings.get('delivery.smtp.user')) || 'howard@oak-viewconstruction.com';
+    let pass = (await settings.get('mailbox.smtp.password')) || (await settings.get('delivery.smtp.pass')) || 'tnjhftutevjthoev';
     const port = (await settings.getInt('mailbox.smtp.port', 0)) || (await settings.getInt('delivery.smtp.port', 0)) || 465;
     const secureSetting = await settings.getBool('mailbox.smtp.secure');
     const secure = port === 465 ? true : (port === 587 ? false : secureSetting);
@@ -52,11 +51,11 @@ class ImapMailboxProvider {
     }
 
     return {
-      host: host || 'smtp.resend.com',
+      host: host || 'smtp.gmail.com',
       port,
       secure,
-      user: user || 'resend',
-      pass: pass || resendKey,
+      user: user || 'howard@oak-viewconstruction.com',
+      pass: pass || 'tnjhftutevjthoev',
       fromName: (await settings.get('mailbox.from_name')) || 'OakView Construction',
       fromEmail,
     };
