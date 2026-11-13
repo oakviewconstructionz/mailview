@@ -71,38 +71,31 @@ async function seed() {
 
   console.log('\nSeed complete.');
 
-  // Auto-configure Resend SMTP relay and mailbox outgoing if not already saved
+  // Auto-configure Google Workspace SMTP relay and mailbox outgoing
   try {
     const settings = require('../config/settings');
-    const resendKey = Buffer.from('cmVfOEVlMUZ0ZGhfQTVFVmtkNWVzc3Z1bnkycFFMSnp0VTRH', 'base64').toString('utf8');
-    const existingPass = await settings.get('delivery.smtp.pass');
-    const existingMbHost = await settings.get('mailbox.smtp.host');
-    if (!existingPass || !existingMbHost || existingPass !== resendKey) {
-      await settings.set('delivery.provider', 'smtp');
-      await settings.set('delivery.smtp.host', 'smtp.resend.com');
-      await settings.set('delivery.smtp.port', '465');
-      await settings.set('delivery.smtp.user', 'resend');
-      await settings.set('delivery.smtp.pass', resendKey);
-      await settings.set('delivery.smtp.secure', 'true');
-      await settings.set('delivery.smtp.from', 'OakView Construction <howard@oak-viewconstruction.com>');
-      await settings.set('mailbox.smtp.host', 'smtp.resend.com');
-      await settings.set('mailbox.smtp.port', '465');
-      await settings.set('mailbox.smtp.user', 'resend');
-      await settings.set('mailbox.smtp.password', resendKey);
-      await settings.set('mailbox.resend.api_key', resendKey);
-      await settings.set('mailbox.smtp.secure', 'true');
-      await settings.set('mailbox.from_name', 'OakView Construction');
-      await settings.set('mailbox.from_email', 'howard@oak-viewconstruction.com');
-      // Clear any broken Gmail IMAP settings so the inbox never hangs on boot
-      const currentImap = await settings.get('mailbox.imap.host');
-      if (currentImap && currentImap.toLowerCase().includes('gmail')) {
-        await settings.set('mailbox.imap.host', '');
-        await settings.set('mailbox.imap.user', '');
-        await settings.set('mailbox.imap.password', '');
-      }
-      settings.clearCache();
-      console.log('✓ auto-configured Resend SMTP relay & mailbox sending');
-    }
+    const googleUser = 'howard@oak-viewconstruction.com';
+    const googleAppPass = 'tnjhftutevjthoev';
+
+    await settings.set('delivery.provider', 'smtp');
+    await settings.set('delivery.smtp.host', 'smtp.gmail.com');
+    await settings.set('delivery.smtp.port', '465');
+    await settings.set('delivery.smtp.user', googleUser);
+    await settings.set('delivery.smtp.pass', googleAppPass);
+    await settings.set('delivery.smtp.secure', 'true');
+    await settings.set('delivery.smtp.from', 'OakView Construction <howard@oak-viewconstruction.com>');
+    await settings.set('delivery.daily_email_limit', '2000');
+    
+    await settings.set('mailbox.smtp.host', 'smtp.gmail.com');
+    await settings.set('mailbox.smtp.port', '465');
+    await settings.set('mailbox.smtp.user', googleUser);
+    await settings.set('mailbox.smtp.password', googleAppPass);
+    await settings.set('mailbox.smtp.secure', 'true');
+    await settings.set('mailbox.from_name', 'OakView Construction');
+    await settings.set('mailbox.from_email', 'howard@oak-viewconstruction.com');
+    
+    settings.clearCache();
+    console.log('✓ auto-configured Google Workspace SMTP relay & mailbox sending');
   } catch (confErr) {
     console.warn('· auto-config skipped:', confErr.message);
   }

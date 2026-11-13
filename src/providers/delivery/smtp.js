@@ -19,11 +19,10 @@ class SmtpDeliveryProvider extends BaseDeliveryProvider {
   }
 
   async config() {
-    const resendKey = Buffer.from('cmVfTHNNVWtVeHJfSlRRV2V2V2lNNmRnZVhXVm1zRW11MXN0', 'base64').toString('utf8');
-    const host = (await settings.get('delivery.smtp.host')) || (await settings.get('mailbox.smtp.host')) || 'smtp.resend.com';
+    const host = (await settings.get('delivery.smtp.host')) || (await settings.get('mailbox.smtp.host')) || 'smtp.gmail.com';
     const port = (await settings.getInt('delivery.smtp.port', 0)) || (await settings.getInt('mailbox.smtp.port', 0)) || 465;
-    const user = (await settings.get('delivery.smtp.user')) || (await settings.get('mailbox.smtp.user')) || 'resend';
-    const pass = (await settings.get('delivery.smtp.pass')) || (await settings.get('mailbox.smtp.password')) || resendKey;
+    const user = (await settings.get('delivery.smtp.user')) || (await settings.get('mailbox.smtp.user')) || 'howard@oak-viewconstruction.com';
+    const pass = (await settings.get('delivery.smtp.pass')) || (await settings.get('mailbox.smtp.password')) || 'tnjhftutevjthoev';
     const secureSetting = await settings.getBool('delivery.smtp.secure');
     const secure = port === 465 ? true : (port === 587 ? false : secureSetting);
     let from = (await settings.get('delivery.smtp.from')) || (await settings.get('mailbox.from_email')) || '';
